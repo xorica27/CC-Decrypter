@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - os: macos-intel
-            runner: macos-13
+            runner: macos-15-intel
             artifact_name: CC-Video-Repair-macOS-Intel-dmg
             dmg_volume_name: CC Video Repair Intel
             dmg_name: CC-Video-Repair-macOS-Intel.dmg
