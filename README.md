@@ -32,7 +32,8 @@ pyinstaller --windowed --name "CC Video Repair" --target-arch universal2 --paths
 
 The workflow in `.github/workflows/build.yml` builds unsigned artifacts for:
 
-- macOS universal2 `.dmg`
+- macOS Intel `.dmg`
+- macOS Apple Silicon `.dmg`
 - Windows x64 Inno Setup `.exe` installer
 
 Manual build:
