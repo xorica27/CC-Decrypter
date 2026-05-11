@@ -21,11 +21,13 @@ jobs:
           - os: macos-intel
             runner: macos-13
             artifact_name: CC-Video-Repair-macOS-Intel-dmg
+            dmg_volume_name: CC Video Repair Intel
             dmg_name: CC-Video-Repair-macOS-Intel.dmg
             pyinstaller_args: --windowed --target-arch x86_64
           - os: macos-apple-silicon
             runner: macos-latest
             artifact_name: CC-Video-Repair-macOS-Apple-Silicon-dmg
+            dmg_volume_name: CC Video Repair Apple Silicon
             dmg_name: CC-Video-Repair-macOS-Apple-Silicon.dmg
             pyinstaller_args: --windowed --target-arch arm64
           - os: windows
@@ -53,15 +55,31 @@ jobs:
       - name: Create macOS DMG
         if: startsWith(matrix.os, 'macos')
         run: |
-          mkdir -p release dmg-root
-          cp -R "dist/CC Video Repair.app" dmg-root/
-          ln -s /Applications "dmg-root/Applications"
-          hdiutil create \
-            -volname "CC Video Repair" \
-            -srcfolder dmg-root \
-            -ov \
-            -format UDZO \
-            "release/${{ matrix.dmg_name }}"
+          set -euo pipefail
+          mkdir -p release
+          dmg_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cc-video-repair-dmg.XXXXXX")"
+          cp -R "dist/CC Video Repair.app" "$dmg_root/"
+          ln -s /Applications "$dmg_root/Applications"
+          hdiutil detach "/Volumes/${{ matrix.dmg_volume_name }}" -force || true
+          sync
+
+          for attempt in 1 2 3; do
+            if hdiutil create \
+              -volname "${{ matrix.dmg_volume_name }}" \
+              -srcfolder "$dmg_root" \
+              -ov \
+              -format UDZO \
+              "release/${{ matrix.dmg_name }}"; then
+              break
+            fi
+
+            if [ "$attempt" = "3" ]; then
+              exit 1
+            fi
+
+            sleep 5
+            hdiutil detach "/Volumes/${{ matrix.dmg_volume_name }}" -force || true
+          done
 
       - name: Install Inno Setup
         if: matrix.os == 'windows'
