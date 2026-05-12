@@ -67,52 +67,38 @@ jobs:
           ${{ matrix.python_bin }} -m pip install --upgrade pip
           ${{ matrix.python_bin }} -m pip install -r requirements.txt
 
+      - name: Run tests
+        run: |
+          ${{ matrix.python_bin }} -m unittest discover -s tests -v
+
       - name: Build app
         env:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: |
           ${{ matrix.python_bin }} -m PyInstaller ${{ matrix.pyinstaller_args }} --name "CC Video Repair" --paths src src/cc_video_repair/app.py
 
-      - name: Add macOS launcher diagnostics
-        if: startsWith(matrix.os, 'macos')
-        run: |
-          set -euo pipefail
-          app_macos="dist/CC Video Repair.app/Contents/MacOS"
-          mv "${app_macos}/CC Video Repair" "${app_macos}/CC Video Repair-bin"
-          cat > "${app_macos}/CC Video Repair" <<'EOF'
-          #!/bin/sh
-          LOG_DIR="$HOME/Library/Logs/CC Video Repair"
-          LOG_FILE="$LOG_DIR/startup.log"
-          mkdir -p "$LOG_DIR"
-          {
-            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] launcher starting"
-            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] sw_vers: $(sw_vers -productVersion 2>/dev/null || true)"
-            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] uname: $(uname -a 2>/dev/null || true)"
-            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] executable: $0"
-          } >> "$LOG_FILE" 2>&1
-          DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-          "$DIR/CC Video Repair-bin" "$@" >> "$LOG_FILE" 2>&1
-          status=$?
-          echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] launcher exit status: $status" >> "$LOG_FILE" 2>&1
-          exit "$status"
-          EOF
-          chmod +x "${app_macos}/CC Video Repair"
-
       - name: Verify macOS app bundle
         if: startsWith(matrix.os, 'macos')
         run: |
           set -euo pipefail
-          /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 10.13" "dist/CC Video Repair.app/Contents/Info.plist" || \
-            /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 10.13" "dist/CC Video Repair.app/Contents/Info.plist"
-          codesign --force --deep --sign - "dist/CC Video Repair.app"
-          codesign --verify --deep --strict --verbose=2 "dist/CC Video Repair.app"
-          plutil -p "dist/CC Video Repair.app/Contents/Info.plist"
-          native_binary="dist/CC Video Repair.app/Contents/MacOS/CC Video Repair"
-          if [ -f "${native_binary}-bin" ]; then
-            native_binary="${native_binary}-bin"
+          app_bundle="dist/CC Video Repair.app"
+          info_plist="${app_bundle}/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 10.13" "$info_plist" || \
+            /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 10.13" "$info_plist"
+
+          bundle_executable_name="$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$info_plist")"
+          bundle_executable="${app_bundle}/Contents/MacOS/${bundle_executable_name}"
+          executable_type="$(file "$bundle_executable")"
+          echo "$executable_type"
+          if ! grep -q "Mach-O" <<< "$executable_type"; then
+            echo "CFBundleExecutable must be the native PyInstaller Mach-O binary, not a wrapper script."
+            exit 1
           fi
-          file "$native_binary"
-          lipo -archs "$native_binary"
+
+          lipo -archs "$bundle_executable"
+          codesign --force --deep --sign - "$app_bundle"
+          codesign --verify --deep --strict --verbose=2 "$app_bundle"
+          plutil -p "$info_plist"
 
       - name: Create macOS DMG
         if: startsWith(matrix.os, 'macos')
