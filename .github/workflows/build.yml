@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 10.13" "dist/CC Video Repair.app/Contents/Info.plist" || \
             /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 10.13" "dist/CC Video Repair.app/Contents/Info.plist"
-          codesign --force --deep --sign - --quiet "dist/CC Video Repair.app"
+          codesign --force --deep --sign - "dist/CC Video Repair.app"
           codesign --verify --deep --strict --verbose=2 "dist/CC Video Repair.app"
           plutil -p "dist/CC Video Repair.app/Contents/Info.plist"
           lipo -archs "dist/CC Video Repair.app/Contents/MacOS/CC Video Repair"
