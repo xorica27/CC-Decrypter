@@ -20,21 +20,27 @@ jobs:
         include:
           - os: macos-intel
             runner: macos-15-intel
-            python_version: "3.10"
+            python_source: pythonorg
+            python_version: "3.10.11"
+            python_bin: /Library/Frameworks/Python.framework/Versions/3.10/bin/python3
             artifact_name: CC-Video-Repair-macOS-Intel-dmg
             dmg_volume_name: CC Video Repair Intel
             dmg_name: CC-Video-Repair-macOS-Intel.dmg
             pyinstaller_args: --windowed --target-arch x86_64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccvideorepair
           - os: macos-apple-silicon
             runner: macos-latest
+            python_source: setup-python
             python_version: "3.12"
+            python_bin: python
             artifact_name: CC-Video-Repair-macOS-Apple-Silicon-dmg
             dmg_volume_name: CC Video Repair Apple Silicon
             dmg_name: CC-Video-Repair-macOS-Apple-Silicon.dmg
             pyinstaller_args: --windowed --target-arch arm64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccvideorepair
           - os: windows
             runner: windows-latest
+            python_source: setup-python
             python_version: "3.12"
+            python_bin: python
             artifact_name: CC-Video-Repair-Windows-x64-installer
             pyinstaller_args: --windowed --icon assets/CCD.ico
 
@@ -42,20 +48,55 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
+        if: matrix.python_source == 'setup-python'
         with:
           python-version: ${{ matrix.python_version }}
           cache: "pip"
 
+      - name: Install python.org runtime
+        if: matrix.python_source == 'pythonorg'
+        run: |
+          set -euo pipefail
+          curl -L -o "${RUNNER_TEMP}/python-${{ matrix.python_version }}-macos11.pkg" \
+            "https://www.python.org/ftp/python/${{ matrix.python_version }}/python-${{ matrix.python_version }}-macos11.pkg"
+          sudo installer -pkg "${RUNNER_TEMP}/python-${{ matrix.python_version }}-macos11.pkg" -target /
+          "${{ matrix.python_bin }}" --version
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          ${{ matrix.python_bin }} -m pip install --upgrade pip
+          ${{ matrix.python_bin }} -m pip install -r requirements.txt
 
       - name: Build app
         env:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: |
-          pyinstaller ${{ matrix.pyinstaller_args }} --name "CC Video Repair" --paths src src/cc_video_repair/app.py
+          ${{ matrix.python_bin }} -m PyInstaller ${{ matrix.pyinstaller_args }} --name "CC Video Repair" --paths src src/cc_video_repair/app.py
+
+      - name: Add macOS launcher diagnostics
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          set -euo pipefail
+          app_macos="dist/CC Video Repair.app/Contents/MacOS"
+          mv "${app_macos}/CC Video Repair" "${app_macos}/CC Video Repair-bin"
+          cat > "${app_macos}/CC Video Repair" <<'EOF'
+          #!/bin/sh
+          LOG_DIR="$HOME/Library/Logs/CC Video Repair"
+          LOG_FILE="$LOG_DIR/startup.log"
+          mkdir -p "$LOG_DIR"
+          {
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] launcher starting"
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] sw_vers: $(sw_vers -productVersion 2>/dev/null || true)"
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] uname: $(uname -a 2>/dev/null || true)"
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] executable: $0"
+          } >> "$LOG_FILE" 2>&1
+          DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          "$DIR/CC Video Repair-bin" "$@" >> "$LOG_FILE" 2>&1
+          status=$?
+          echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')] launcher exit status: $status" >> "$LOG_FILE" 2>&1
+          exit "$status"
+          EOF
+          chmod +x "${app_macos}/CC Video Repair"
 
       - name: Verify macOS app bundle
         if: startsWith(matrix.os, 'macos')
