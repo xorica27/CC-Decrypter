@@ -16,6 +16,7 @@ OutputBaseFilename=CC-Video-Repair-Windows-x64-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\..\assets\CCD.ico
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 

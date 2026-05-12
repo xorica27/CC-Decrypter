@@ -20,27 +20,30 @@ jobs:
         include:
           - os: macos-intel
             runner: macos-15-intel
+            python_version: "3.10"
             artifact_name: CC-Video-Repair-macOS-Intel-dmg
             dmg_volume_name: CC Video Repair Intel
             dmg_name: CC-Video-Repair-macOS-Intel.dmg
-            pyinstaller_args: --windowed --target-arch x86_64
+            pyinstaller_args: --windowed --target-arch x86_64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccvideorepair
           - os: macos-apple-silicon
             runner: macos-latest
+            python_version: "3.12"
             artifact_name: CC-Video-Repair-macOS-Apple-Silicon-dmg
             dmg_volume_name: CC Video Repair Apple Silicon
             dmg_name: CC-Video-Repair-macOS-Apple-Silicon.dmg
-            pyinstaller_args: --windowed --target-arch arm64
+            pyinstaller_args: --windowed --target-arch arm64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccvideorepair
           - os: windows
             runner: windows-latest
+            python_version: "3.12"
             artifact_name: CC-Video-Repair-Windows-x64-installer
-            pyinstaller_args: --windowed
+            pyinstaller_args: --windowed --icon assets/CCD.ico
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python_version }}
           cache: "pip"
 
       - name: Install dependencies
@@ -49,8 +52,21 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build app
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: |
           pyinstaller ${{ matrix.pyinstaller_args }} --name "CC Video Repair" --paths src src/cc_video_repair/app.py
+
+      - name: Verify macOS app bundle
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          set -euo pipefail
+          /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 10.13" "dist/CC Video Repair.app/Contents/Info.plist" || \
+            /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 10.13" "dist/CC Video Repair.app/Contents/Info.plist"
+          codesign --force --deep --sign - --quiet "dist/CC Video Repair.app"
+          codesign --verify --deep --strict --verbose=2 "dist/CC Video Repair.app"
+          plutil -p "dist/CC Video Repair.app/Contents/Info.plist"
+          lipo -archs "dist/CC Video Repair.app/Contents/MacOS/CC Video Repair"
 
       - name: Create macOS DMG
         if: startsWith(matrix.os, 'macos')

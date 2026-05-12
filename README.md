@@ -22,10 +22,10 @@ python -m pip install pyinstaller
 pyinstaller --windowed --name "CC Video Repair" --paths src src/cc_video_repair/app.py
 ```
 
-On macOS universal builds:
+On macOS builds:
 
 ```bash
-pyinstaller --windowed --name "CC Video Repair" --target-arch universal2 --paths src src/cc_video_repair/app.py
+pyinstaller --windowed --name "CC Video Repair" --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccvideorepair --paths src src/cc_video_repair/app.py
 ```
 
 ## GitHub Actions
