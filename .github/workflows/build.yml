@@ -107,7 +107,12 @@ jobs:
           codesign --force --deep --sign - "dist/CC Video Repair.app"
           codesign --verify --deep --strict --verbose=2 "dist/CC Video Repair.app"
           plutil -p "dist/CC Video Repair.app/Contents/Info.plist"
-          lipo -archs "dist/CC Video Repair.app/Contents/MacOS/CC Video Repair"
+          native_binary="dist/CC Video Repair.app/Contents/MacOS/CC Video Repair"
+          if [ -f "${native_binary}-bin" ]; then
+            native_binary="${native_binary}-bin"
+          fi
+          file "$native_binary"
+          lipo -archs "$native_binary"
 
       - name: Create macOS DMG
         if: startsWith(matrix.os, 'macos')
