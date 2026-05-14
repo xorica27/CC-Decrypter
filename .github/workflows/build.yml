@@ -100,6 +100,7 @@ jobs:
           lipo -archs "$bundle_executable"
           codesign --force --deep --sign - "$app_bundle"
           codesign --verify --deep --strict --verbose=2 "$app_bundle"
+          "$bundle_executable" --smoke-test
           plutil -p "$info_plist"
 
       - name: Create macOS DMG

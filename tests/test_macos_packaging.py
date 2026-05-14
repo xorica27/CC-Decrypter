@@ -18,6 +18,7 @@ class MacOSPackagingTests(unittest.TestCase):
         self.assertIn("CC-Decrypter-Windows-x64-installer", workflow)
         self.assertIn("CFBundleExecutable", workflow)
         self.assertIn('file "$bundle_executable"', workflow)
+        self.assertIn('"$bundle_executable" --smoke-test', workflow)
 
         windows_installer = WINDOWS_INSTALLER.read_text(encoding="utf-8")
         self.assertIn("CC-Decrypter-Windows-x64-Setup", windows_installer)

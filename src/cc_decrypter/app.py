@@ -9,6 +9,7 @@ from pathlib import Path
 
 LOG_DIR = Path.home() / "Library" / "Logs" / "CC Decrypter"
 LOG_PATH = LOG_DIR / "startup.log"
+SMOKE_TEST_ARG = "--smoke-test"
 
 
 def _write_startup_log(message: str) -> None:
@@ -20,7 +21,21 @@ def _write_startup_log(message: str) -> None:
         pass
 
 
-def main() -> None:
+def _run_smoke_test() -> None:
+    _write_startup_log("running smoke test")
+
+    from tkinter import Tk
+
+    root = Tk()
+    root.withdraw()
+    root.update_idletasks()
+    root.destroy()
+    print("CC Decrypter smoke test passed")
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = sys.argv[1:] if argv is None else argv
+
     _write_startup_log(
         "starting "
         f"python={sys.version.split()[0]} "
@@ -29,6 +44,10 @@ def main() -> None:
     )
 
     try:
+        if SMOKE_TEST_ARG in args:
+            _run_smoke_test()
+            return
+
         from cc_decrypter.gui import main as gui_main
 
         gui_main()
