@@ -1,6 +1,6 @@
 [project]
 name = "cc-video-repair"
-version = "0.1.0"
+version = "0.1.9"
 description = "Private local utility for authorized video draft repair."
 requires-python = ">=3.10"
 

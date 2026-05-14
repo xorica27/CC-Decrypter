@@ -147,6 +147,41 @@ def find_top_level(data: bytes, box_type: bytes) -> Box | None:
     return None
 
 
+def iter_box_candidates(data: bytes, box_type: bytes) -> Iterable[Box]:
+    top_level = find_top_level(data, box_type)
+    seen: set[int] = set()
+    if top_level is not None:
+        seen.add(top_level.start)
+        yield top_level
+
+    cursor = 0
+    while True:
+        marker = data.find(box_type, cursor)
+        if marker < 0:
+            return
+
+        start = marker - 4
+        cursor = marker + 1
+        if start < 0 or start in seen:
+            continue
+
+        size = int.from_bytes(data[start:marker], "big")
+        header_size = 8
+        if size == 1:
+            if start + 16 > len(data):
+                continue
+            size = int.from_bytes(data[start + 8 : start + 16], "big")
+            header_size = 16
+        elif size == 0:
+            size = len(data) - start
+
+        if size < header_size or start + size > len(data):
+            continue
+
+        seen.add(start)
+        yield Box(start, size, box_type, header_size)
+
+
 def read_u32(data: bytes, offset: int) -> int:
     return int.from_bytes(data[offset : offset + 4], "big")
 
@@ -213,40 +248,48 @@ def parse_chunk_offsets(data: bytes, box: Box) -> list[int]:
 
 
 def parse_video_samples(full_xor_payload: bytes) -> list[Sample]:
-    moov = find_top_level(full_xor_payload, b"moov")
-    if moov is None:
+    found_moov = False
+    for moov in iter_box_candidates(full_xor_payload, b"moov"):
+        found_moov = True
+        samples = parse_video_samples_from_moov(full_xor_payload, moov)
+        if samples is not None:
+            return samples
+
+    if not found_moov:
         raise DecodeError("Could not find moov box after preliminary decode.")
 
-    for trak in iter_boxes(full_xor_payload, moov.content_start, moov.end):
+    raise DecodeError("Could not find a video sample table.")
+
+
+def parse_video_samples_from_moov(data: bytes, moov: Box) -> list[Sample] | None:
+    for trak in iter_boxes(data, moov.content_start, moov.end):
         if trak.type != b"trak":
             continue
 
-        hdlr = find_path(full_xor_payload, trak, (b"mdia", b"hdlr"))
+        hdlr = find_path(data, trak, (b"mdia", b"hdlr"))
         if hdlr is None:
             continue
 
-        handler = full_xor_payload[hdlr.content_start + 8 : hdlr.content_start + 12]
+        handler = data[hdlr.content_start + 8 : hdlr.content_start + 12]
         if handler != b"vide":
             continue
 
-        stbl = find_path(full_xor_payload, trak, (b"mdia", b"minf", b"stbl"))
+        stbl = find_path(data, trak, (b"mdia", b"minf", b"stbl"))
         if stbl is None:
             continue
 
-        stsz = find_child(full_xor_payload, stbl, b"stsz")
-        stsc = find_child(full_xor_payload, stbl, b"stsc")
-        stco = find_child(full_xor_payload, stbl, b"stco") or find_child(
-            full_xor_payload, stbl, b"co64"
-        )
+        stsz = find_child(data, stbl, b"stsz")
+        stsc = find_child(data, stbl, b"stsc")
+        stco = find_child(data, stbl, b"stco") or find_child(data, stbl, b"co64")
         if stsz is None or stsc is None or stco is None:
             continue
 
-        sizes = parse_stsz(full_xor_payload, stsz)
-        stsc_entries = parse_stsc(full_xor_payload, stsc)
-        chunk_offsets = parse_chunk_offsets(full_xor_payload, stco)
+        sizes = parse_stsz(data, stsz)
+        stsc_entries = parse_stsc(data, stsc)
+        chunk_offsets = parse_chunk_offsets(data, stco)
         return build_samples(sizes, stsc_entries, chunk_offsets)
 
-    raise DecodeError("Could not find a video sample table.")
+    return None
 
 
 def build_samples(
@@ -329,8 +372,12 @@ def discover_bdve_params(data: bytes, key: int, footer: BdveFooter, log: LogFn) 
         if raw_pos >= 0:
             observations.append((raw_pos, False))
 
-    full_xor_payload = xor_bytes(data[: footer.start], key)
-    samples = parse_video_samples(full_xor_payload)
+    payload = data[: footer.start]
+    full_xor_payload = xor_bytes(payload, key)
+    try:
+        samples = parse_video_samples(full_xor_payload)
+    except DecodeError:
+        samples = parse_video_samples(payload)
     log(f"parsed {len(samples):,} video samples for parameter discovery")
 
     for sample in samples[:260]:

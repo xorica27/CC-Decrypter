@@ -1,5 +1,5 @@
 #define MyAppName "CC Video Repair"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.9"
 #define MyAppPublisher "Xorica"
 #define MyAppExeName "CC Video Repair.exe"
 
