@@ -1,45 +1,58 @@
-# CC Video Repair
+# CC Decrypter
 
-CC Video Repair is a small desktop app for recovering your own local editor
-draft video files when they are stuck in a protected cache format and will not
-play normally.
+CC Decrypter helps you turn supported CC video files into normal MP4 files that
+you can open in your usual video apps.
 
-Drop in the affected video file, choose where to save the repaired copy, and the
-app writes a normal MP4 you can try opening in QuickTime, VLC, Premiere,
-Resolve, or another video tool.
+If a CC video file from your local draft or cache folder will not play properly,
+this app can try to decrypt it and save a new playable copy. Your original file
+is not changed.
 
-This tool is meant only for files you own or are authorized to repair.
+Please only use CC Decrypter on files you own or have permission to decrypt.
 
 ## Download
 
-Go to the latest GitHub Release and download the installer for your computer:
+Download the latest version from the GitHub Releases page.
 
-- Apple Silicon Mac: use the Apple Silicon DMG if your Mac has an M1, M2, M3,
-  or newer Apple chip.
-- Intel Mac: use the Intel DMG if your Mac uses an Intel processor.
-- Windows: use the Windows x64 Setup file.
+Choose the file that matches your computer:
 
-The apps are currently unsigned, so macOS or Windows may show a security
-warning the first time you open them.
+- Apple Silicon Mac: for M1, M2, M3, or newer Macs.
+- Intel Mac: for older Intel-based Macs.
+- Windows: for Windows 64-bit PCs.
+
+The app is currently unsigned, so your computer may show a warning the first
+time you open it.
 
 ## How To Use
 
-1. Open CC Video Repair.
-2. Select the damaged or protected local video file.
-3. Choose a save location for the repaired MP4.
-4. Click Decode.
-5. Open the new MP4 in your video player or editor.
+1. Open CC Decrypter.
+2. Click Browse next to the input field.
+3. Choose the CC video file you want to decrypt.
+4. Choose where to save the new MP4 file.
+5. Click Decode.
+6. Wait until the app finishes.
+7. Open the new MP4 in QuickTime, VLC, Premiere, Resolve, or another video app.
 
-The original file is left untouched. The app writes a separate repaired copy.
+That is it. The app creates a separate decrypted copy, so you can keep the
+original file as a backup.
 
-## What It Can Repair
+## What To Expect
 
-CC Video Repair is designed for supported BDVE-protected MP4 draft/cache files.
-It may not repair every damaged video. If the app cannot read the file, try
-keeping a copy of the original file and share the error message when reporting
-the issue.
+CC Decrypter works with supported CC video files from local draft/cache folders.
+It is not a general video repair tool, and it may not work on every file.
 
-## Run From Source
+If the app cannot decrypt your video, keep the original file and share the error
+message when reporting the issue.
+
+## Notes
+
+- The Apple Silicon Mac version is the recommended Mac version when possible.
+- The Intel Mac version may not work perfectly on every Intel Mac yet.
+- The Windows version has not been manually tested yet. If you try it, feedback
+  is very welcome.
+
+## For Developers
+
+Run the app from source:
 
 ```bash
 python3 -m venv .venv
@@ -48,38 +61,9 @@ python -m pip install -r requirements.txt
 PYTHONPATH=src python -m cc_video_repair.app
 ```
 
-## Build From Source
+Build locally:
 
 ```bash
 python -m pip install pyinstaller
-pyinstaller --windowed --name "CC Video Repair" --paths src src/cc_video_repair/app.py
+pyinstaller --windowed --name "CC Decrypter" --paths src src/cc_video_repair/app.py
 ```
-
-On macOS builds:
-
-```bash
-pyinstaller --windowed --name "CC Video Repair" --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccvideorepair --paths src src/cc_video_repair/app.py
-```
-
-## Release Builds
-
-The workflow in `.github/workflows/build.yml` builds unsigned artifacts for:
-
-- macOS Intel `.dmg`
-- macOS Apple Silicon `.dmg`
-- Windows x64 Inno Setup `.exe` installer
-
-To build manually from GitHub:
-
-1. Open the repository on GitHub.
-2. Go to **Actions**.
-3. Run **Build desktop apps**.
-
-To publish a release, push a version tag:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Tag builds attach the installer files to a GitHub Release.
