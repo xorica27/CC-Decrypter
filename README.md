@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/CCD.ico" alt="CC Decrypter app icon" width="96" height="96">
+</p>
+
 # CC Decrypter
 
 CC Decrypter helps you turn supported CC video files into normal MP4 files that
@@ -38,7 +42,7 @@ original file as a backup.
 ## What To Expect
 
 CC Decrypter works with supported CC video files from local draft/cache folders.
-It is not a general video repair tool, and it may not work on every file.
+It is not a general video converter, and it may not work on every file.
 
 If the app cannot decrypt your video, keep the original file and share the error
 message when reporting the issue.
@@ -58,12 +62,12 @@ Run the app from source:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-PYTHONPATH=src python -m cc_video_repair.app
+PYTHONPATH=src python -m cc_decrypter.app
 ```
 
 Build locally:
 
 ```bash
 python -m pip install pyinstaller
-pyinstaller --windowed --name "CC Decrypter" --paths src src/cc_video_repair/app.py
+pyinstaller --windowed --name "CC Decrypter" --paths src src/cc_decrypter/app.py
 ```

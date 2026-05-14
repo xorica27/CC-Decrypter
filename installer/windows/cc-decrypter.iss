@@ -1,7 +1,7 @@
-#define MyAppName "CC Video Repair"
-#define MyAppVersion "0.1.10"
+#define MyAppName "CC Decrypter"
+#define MyAppVersion "0.1.11"
 #define MyAppPublisher "Xorica"
-#define MyAppExeName "CC Video Repair.exe"
+#define MyAppExeName "CC Decrypter.exe"
 
 [Setup]
 AppId={{35F5F5F9-7E06-47D8-89B5-28044777D080}
@@ -12,7 +12,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=..\..\release
-OutputBaseFilename=CC-Video-Repair-Windows-x64-Setup
+OutputBaseFilename=CC-Decrypter-Windows-x64-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -27,7 +27,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\..\dist\CC Video Repair\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\CC Decrypter\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

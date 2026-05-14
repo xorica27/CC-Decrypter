@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-LOG_DIR = Path.home() / "Library" / "Logs" / "CC Video Repair"
+LOG_DIR = Path.home() / "Library" / "Logs" / "CC Decrypter"
 LOG_PATH = LOG_DIR / "startup.log"
 
 
@@ -29,7 +29,7 @@ def main() -> None:
     )
 
     try:
-        from cc_video_repair.gui import main as gui_main
+        from cc_decrypter.gui import main as gui_main
 
         gui_main()
     except Exception:

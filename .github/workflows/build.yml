@@ -23,25 +23,25 @@ jobs:
             python_source: pythonorg
             python_version: "3.10.11"
             python_bin: /Library/Frameworks/Python.framework/Versions/3.10/bin/python3
-            artifact_name: CC-Video-Repair-macOS-Intel-dmg
-            dmg_volume_name: CC Video Repair Intel
-            dmg_name: CC-Video-Repair-macOS-Intel.dmg
-            pyinstaller_args: --windowed --target-arch x86_64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccvideorepair
+            artifact_name: CC-Decrypter-macOS-Intel-dmg
+            dmg_volume_name: CC Decrypter Intel
+            dmg_name: CC-Decrypter-macOS-Intel.dmg
+            pyinstaller_args: --windowed --target-arch x86_64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccdecrypter
           - os: macos-apple-silicon
             runner: macos-latest
             python_source: setup-python
             python_version: "3.12"
             python_bin: python
-            artifact_name: CC-Video-Repair-macOS-Apple-Silicon-dmg
-            dmg_volume_name: CC Video Repair Apple Silicon
-            dmg_name: CC-Video-Repair-macOS-Apple-Silicon.dmg
-            pyinstaller_args: --windowed --target-arch arm64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccvideorepair
+            artifact_name: CC-Decrypter-macOS-Apple-Silicon-dmg
+            dmg_volume_name: CC Decrypter Apple Silicon
+            dmg_name: CC-Decrypter-macOS-Apple-Silicon.dmg
+            pyinstaller_args: --windowed --target-arch arm64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccdecrypter
           - os: windows
             runner: windows-latest
             python_source: setup-python
             python_version: "3.12"
             python_bin: python
-            artifact_name: CC-Video-Repair-Windows-x64-installer
+            artifact_name: CC-Decrypter-Windows-x64-installer
             pyinstaller_args: --windowed --icon assets/CCD.ico
 
     steps:
@@ -77,13 +77,13 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: |
-          ${{ matrix.python_bin }} -m PyInstaller ${{ matrix.pyinstaller_args }} --name "CC Video Repair" --paths src src/cc_video_repair/app.py
+          ${{ matrix.python_bin }} -m PyInstaller ${{ matrix.pyinstaller_args }} --name "CC Decrypter" --paths src src/cc_decrypter/app.py
 
       - name: Verify macOS app bundle
         if: startsWith(matrix.os, 'macos')
         run: |
           set -euo pipefail
-          app_bundle="dist/CC Video Repair.app"
+          app_bundle="dist/CC Decrypter.app"
           info_plist="${app_bundle}/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 10.13" "$info_plist" || \
             /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 10.13" "$info_plist"
@@ -107,8 +107,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          dmg_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cc-video-repair-dmg.XXXXXX")"
-          cp -R "dist/CC Video Repair.app" "$dmg_root/"
+          dmg_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cc-decrypter-dmg.XXXXXX")"
+          cp -R "dist/CC Decrypter.app" "$dmg_root/"
           ln -s /Applications "$dmg_root/Applications"
           hdiutil detach "/Volumes/${{ matrix.dmg_volume_name }}" -force || true
           sync
@@ -142,7 +142,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer/windows/cc-video-repair.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer/windows/cc-decrypter.iss
 
       - uses: actions/upload-artifact@v4
         with:

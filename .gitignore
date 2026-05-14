@@ -22,3 +22,6 @@ release/
 packet_variant_tests/
 capcut_decode_gui.py
 rebuild_capcut_compound.py
+
+# Local Codex/agent working notes. Keep this private.
+agent.md

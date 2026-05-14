@@ -5,13 +5,13 @@ from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, Button, Entry, Frame, Label, StringVar, Tk
 from tkinter import filedialog, messagebox, scrolledtext
 
-from cc_video_repair.decoder import DecodeError, decode_file
+from cc_decrypter.decoder import DecodeError, decode_file
 
 
-class VideoRepairApp:
+class DecrypterApp:
     def __init__(self, root: Tk):
         self.root = root
-        root.title("CC Video Repair")
+        root.title("CC Decrypter")
         root.geometry("820x540")
 
         self.input_var = StringVar()
@@ -96,5 +96,5 @@ class VideoRepairApp:
 
 def main() -> None:
     root = Tk()
-    VideoRepairApp(root)
+    DecrypterApp(root)
     root.mainloop()

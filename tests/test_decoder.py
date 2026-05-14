@@ -1,6 +1,6 @@
 import unittest
 
-from cc_video_repair.decoder import CryptorParams, decode_bytes, param_sha256
+from cc_decrypter.decoder import CryptorParams, decode_bytes, param_sha256
 
 
 def box(box_type: bytes, payload: bytes) -> bytes:

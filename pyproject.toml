@@ -1,7 +1,7 @@
 [project]
-name = "cc-video-repair"
-version = "0.1.10"
-description = "Private local utility for authorized video draft repair."
+name = "cc-decrypter"
+version = "0.1.11"
+description = "Local utility for decrypting authorized CC video files."
 requires-python = ">=3.10"
 
 [tool.pytest.ini_options]
