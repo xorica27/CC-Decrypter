@@ -28,6 +28,8 @@ class MacOSPackagingTests(unittest.TestCase):
         self.assertIn("dmgforge background", workflow)
         self.assertIn('dmgforge arrow "$project_path" --show --color "#111417"', workflow)
         self.assertIn("dmgforge export", workflow)
+        self.assertIn('packaged_dmg="$package_dir/${{ matrix.dmg_name }}"', workflow)
+        self.assertIn('cp "$packaged_dmg" "release/${{ matrix.dmg_name }}"', workflow)
 
         windows_installer = WINDOWS_INSTALLER.read_text(encoding="utf-8")
         self.assertIn("CC-Decrypter-Windows-x64-Setup", windows_installer)

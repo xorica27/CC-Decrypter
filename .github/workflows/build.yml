@@ -134,12 +134,14 @@ jobs:
           mkdir -p "$package_dir"
           background_image="$package_dir/cc-decrypter-dmg-background.png"
           project_path="$package_dir/${{ matrix.dmg_name }}.dmgproject"
+          packaged_dmg="$package_dir/${{ matrix.dmg_name }}"
 
           ${{ matrix.python_bin }} scripts/generate_dmg_background.py "$background_image"
           hdiutil detach "/Volumes/${{ matrix.dmg_volume_name }}" -force || true
 
           for attempt in 1 2 3; do
-            rm -f "$project_path" "release/${{ matrix.dmg_name }}"
+            rm -f "$project_path" "$packaged_dmg" "release/${{ matrix.dmg_name }}"
+            rm -rf "$package_dir/dmgforge-work"
             dmgforge init \
               --app "dist/CC Decrypter.app" \
               --name "CC Decrypter" \
@@ -154,12 +156,13 @@ jobs:
 
             PROJECT_PATH="$project_path" \
               VOLUME_NAME="${{ matrix.dmg_volume_name }}" \
-              DMG_NAME="${{ matrix.dmg_name }}" \
-              ${{ matrix.python_bin }} -c 'import json, os; from pathlib import Path; project_path = Path(os.environ["PROJECT_PATH"]); project = json.loads(project_path.read_text(encoding="utf-8")); project["volumeName"] = os.environ["VOLUME_NAME"]; project["outputPath"] = "release/" + os.environ["DMG_NAME"]; project_path.write_text(json.dumps(project, indent=2) + "\n", encoding="utf-8")'
+              DMG_OUTPUT="$packaged_dmg" \
+              ${{ matrix.python_bin }} -c 'import json, os; from pathlib import Path; project_path = Path(os.environ["PROJECT_PATH"]); project = json.loads(project_path.read_text(encoding="utf-8")); project["volumeName"] = os.environ["VOLUME_NAME"]; project["outputPath"] = os.environ["DMG_OUTPUT"]; project_path.write_text(json.dumps(project, indent=2) + "\n", encoding="utf-8")'
 
             dmgforge validate "$project_path"
 
-            if dmgforge export "$project_path" --output "release/${{ matrix.dmg_name }}"; then
+            if dmgforge export "$project_path" --output "$packaged_dmg"; then
+              cp "$packaged_dmg" "release/${{ matrix.dmg_name }}"
               break
             fi
 
