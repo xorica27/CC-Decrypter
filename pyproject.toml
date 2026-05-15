@@ -1,6 +1,6 @@
 [project]
 name = "cc-decrypter"
-version = "0.1.11"
+version = "0.1.12"
 description = "Local utility for decrypting authorized CC video files."
 requires-python = ">=3.10"
 

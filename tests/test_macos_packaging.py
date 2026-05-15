@@ -22,6 +22,12 @@ class MacOSPackagingTests(unittest.TestCase):
         self.assertIn("CFBundleExecutable", workflow)
         self.assertIn('file "$bundle_executable"', workflow)
         self.assertIn('"$bundle_executable" --smoke-test', workflow)
+        self.assertIn("Install DMGForge", workflow)
+        self.assertIn("scripts/generate_dmg_background.py", workflow)
+        self.assertIn("dmgforge init", workflow)
+        self.assertIn("dmgforge background", workflow)
+        self.assertIn('dmgforge arrow "$project_path" --show --color "#111417"', workflow)
+        self.assertIn("dmgforge export", workflow)
 
         windows_installer = WINDOWS_INSTALLER.read_text(encoding="utf-8")
         self.assertIn("CC-Decrypter-Windows-x64-Setup", windows_installer)

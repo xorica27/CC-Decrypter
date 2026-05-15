@@ -1,3 +1,3 @@
 """Local utility for decrypting authorized CC video files."""
 
-__version__ = "0.1.11"
+__version__ = "0.1.12"

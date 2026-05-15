@@ -70,6 +70,16 @@ jobs:
           ${{ matrix.python_bin }} -m pip install --upgrade pip
           ${{ matrix.python_bin }} -m pip install -r requirements.txt
 
+      - name: Install DMGForge
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          set -euo pipefail
+          dmgforge_dir="${RUNNER_TEMP}/DMGForge"
+          git clone --depth 1 https://github.com/xorica27/DMGForge.git "$dmgforge_dir"
+          "$dmgforge_dir/scripts/build.sh" --skip-tests --arch "$(uname -m)"
+          echo "$dmgforge_dir/dist/DMGForge.app/Contents/MacOS" >> "$GITHUB_PATH"
+          "$dmgforge_dir/dist/DMGForge.app/Contents/MacOS/dmgforge" --help
+
       - name: Run tests
         env:
           PYTHONPATH: src
@@ -119,19 +129,37 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          dmg_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cc-decrypter-dmg.XXXXXX")"
-          cp -R "dist/CC Decrypter.app" "$dmg_root/"
-          ln -s /Applications "$dmg_root/Applications"
+          release_version="${GITHUB_REF_NAME#v}"
+          package_dir="${RUNNER_TEMP}/cc-decrypter-dmgforge-${{ matrix.os }}"
+          mkdir -p "$package_dir"
+          background_image="$package_dir/cc-decrypter-dmg-background.png"
+          project_path="$package_dir/${{ matrix.dmg_name }}.dmgproject"
+
+          ${{ matrix.python_bin }} scripts/generate_dmg_background.py "$background_image"
           hdiutil detach "/Volumes/${{ matrix.dmg_volume_name }}" -force || true
-          sync
 
           for attempt in 1 2 3; do
-            if hdiutil create \
-              -volname "${{ matrix.dmg_volume_name }}" \
-              -srcfolder "$dmg_root" \
-              -ov \
-              -format UDZO \
-              "release/${{ matrix.dmg_name }}"; then
+            rm -f "$project_path" "release/${{ matrix.dmg_name }}"
+            dmgforge init \
+              --app "dist/CC Decrypter.app" \
+              --name "CC Decrypter" \
+              --version "$release_version" \
+              --output "$project_path"
+            dmgforge copy "$project_path" \
+              --title "Install CC Decrypter" \
+              --description "Drag CC Decrypter into Applications." \
+              --footer "Unsigned local build. Open from Applications after copying."
+            dmgforge background "$project_path" --image "$background_image"
+            dmgforge arrow "$project_path" --show --color "#111417" --thickness 7
+
+            PROJECT_PATH="$project_path" \
+              VOLUME_NAME="${{ matrix.dmg_volume_name }}" \
+              DMG_NAME="${{ matrix.dmg_name }}" \
+              ${{ matrix.python_bin }} -c 'import json, os; from pathlib import Path; project_path = Path(os.environ["PROJECT_PATH"]); project = json.loads(project_path.read_text(encoding="utf-8")); project["volumeName"] = os.environ["VOLUME_NAME"]; project["outputPath"] = "release/" + os.environ["DMG_NAME"]; project_path.write_text(json.dumps(project, indent=2) + "\n", encoding="utf-8")'
+
+            dmgforge validate "$project_path"
+
+            if dmgforge export "$project_path" --output "release/${{ matrix.dmg_name }}"; then
               break
             fi
 
