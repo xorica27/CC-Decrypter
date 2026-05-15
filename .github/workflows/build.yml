@@ -26,6 +26,7 @@ jobs:
             artifact_name: CC-Decrypter-macOS-Intel-dmg
             dmg_volume_name: CC Decrypter Intel
             dmg_name: CC-Decrypter-macOS-Intel.dmg
+            pyinstaller_name: CC-Decrypter
             pyinstaller_args: --windowed --target-arch x86_64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccdecrypter
           - os: macos-apple-silicon
             runner: macos-latest
@@ -35,6 +36,7 @@ jobs:
             artifact_name: CC-Decrypter-macOS-Apple-Silicon-dmg
             dmg_volume_name: CC Decrypter Apple Silicon
             dmg_name: CC-Decrypter-macOS-Apple-Silicon.dmg
+            pyinstaller_name: CC-Decrypter
             pyinstaller_args: --windowed --target-arch arm64 --icon assets/CCD.icns --osx-bundle-identifier com.xorica.ccdecrypter
           - os: windows
             runner: windows-latest
@@ -42,6 +44,7 @@ jobs:
             python_version: "3.12"
             python_bin: python
             artifact_name: CC-Decrypter-Windows-x64-installer
+            pyinstaller_name: CC Decrypter
             pyinstaller_args: --windowed --icon assets/CCD.ico
 
     steps:
@@ -77,14 +80,22 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: |
-          ${{ matrix.python_bin }} -m PyInstaller ${{ matrix.pyinstaller_args }} --name "CC Decrypter" --paths src src/cc_decrypter/app.py
+          ${{ matrix.python_bin }} -m PyInstaller ${{ matrix.pyinstaller_args }} --name "${{ matrix.pyinstaller_name }}" --paths src src/cc_decrypter/app.py
 
       - name: Verify macOS app bundle
         if: startsWith(matrix.os, 'macos')
         run: |
           set -euo pipefail
           app_bundle="dist/CC Decrypter.app"
+          built_app_bundle="dist/${{ matrix.pyinstaller_name }}.app"
+          if [ "$built_app_bundle" != "$app_bundle" ]; then
+            rm -rf "$app_bundle"
+            mv "$built_app_bundle" "$app_bundle"
+          fi
+
           info_plist="${app_bundle}/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName CC Decrypter" "$info_plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CC Decrypter" "$info_plist"
           /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 10.13" "$info_plist" || \
             /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 10.13" "$info_plist"
 

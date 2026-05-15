@@ -12,7 +12,10 @@ class MacOSPackagingTests(unittest.TestCase):
     def test_macos_bundle_keeps_pyinstaller_binary_as_entrypoint(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn('--name "CC Decrypter"', workflow)
+        self.assertIn("pyinstaller_name: CC-Decrypter", workflow)
+        self.assertIn('--name "${{ matrix.pyinstaller_name }}"', workflow)
+        self.assertIn('app_bundle="dist/CC Decrypter.app"', workflow)
+        self.assertIn("Set :CFBundleDisplayName CC Decrypter", workflow)
         self.assertIn("CC-Decrypter-macOS-Apple-Silicon.dmg", workflow)
         self.assertIn("CC-Decrypter-macOS-Intel.dmg", workflow)
         self.assertIn("CC-Decrypter-Windows-x64-installer", workflow)
