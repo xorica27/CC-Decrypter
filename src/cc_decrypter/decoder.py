@@ -8,6 +8,10 @@ from typing import Callable, Iterable
 
 BDVE_DEFAULT_STEP = 1_022_554
 BDVE_DEFAULT_LENGTH = 311_610
+BDVE_KNOWN_PROFILES = (
+    (BDVE_DEFAULT_STEP, BDVE_DEFAULT_LENGTH),
+    (102_303, 89_230),
+)
 MAX_DISCOVERY_STEP = 5_000_000
 
 LogFn = Callable[[str], None]
@@ -354,9 +358,10 @@ def score_h264_sample(sample: bytes) -> int:
 
 
 def discover_bdve_params(data: bytes, key: int, footer: BdveFooter, log: LogFn) -> CryptorParams:
-    known = (
-        CryptorParams(BDVE_DEFAULT_STEP, BDVE_DEFAULT_LENGTH, key),
-        CryptorParams(BDVE_DEFAULT_STEP, BDVE_DEFAULT_LENGTH, data[0]),
+    known = tuple(
+        CryptorParams(step, length, candidate_key)
+        for step, length in BDVE_KNOWN_PROFILES
+        for candidate_key in (key, data[0])
     )
     for params in known:
         if param_sha256(params.step, params.length, params.key) == footer.sha256:

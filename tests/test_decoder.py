@@ -82,6 +82,21 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(decoded, payload)
         self.assertEqual(decoded_params, params)
 
+    def test_decodes_known_short_stride_bdve_profile(self) -> None:
+        params = CryptorParams(step=102_303, length=89_230, key=0x65)
+        payload = (
+            box(b"ftyp", b"qt  " + b"\x00\x00\x02\x00" + b"qt  ")
+            + box(b"wide", b"")
+            + box(b"mdat", b"\x00" * 110_000)
+            + box(b"moov", b"\x00" * 256)
+        )
+        protected = encrypt_bdve_payload(payload, params) + bdve_footer(params)
+
+        decoded, decoded_params = decode_bytes(protected)
+
+        self.assertEqual(decoded, payload)
+        self.assertEqual(decoded_params, params)
+
 
 if __name__ == "__main__":
     unittest.main()

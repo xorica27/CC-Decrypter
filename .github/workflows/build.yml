@@ -106,6 +106,9 @@ jobs:
           info_plist="${app_bundle}/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleName CC Decrypter" "$info_plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName CC Decrypter" "$info_plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${GITHUB_REF_NAME#v}" "$info_plist"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${GITHUB_REF_NAME#v}" "$info_plist" || \
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_REF_NAME#v}" "$info_plist"
           /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 10.13" "$info_plist" || \
             /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 10.13" "$info_plist"
 
@@ -151,6 +154,18 @@ jobs:
               --title "Install CC Decrypter" \
               --description "Drag CC Decrypter into Applications." \
               --footer "Unsigned local build. Open from Applications after copying."
+            dmgforge first-launch "$project_path" \
+              --enable \
+              --help-file "Unsigned App First Launch Guide.txt" \
+              --security-shortcut "Open Privacy & Security.inetloc" \
+              --help-text "CC Decrypter is unsigned, so macOS may block the first launch.
+
+          1. Drag CC Decrypter into Applications.
+          2. Open CC Decrypter from Applications.
+          3. If macOS says the app cannot be opened because it is from an unidentified developer, open System Settings > Privacy & Security.
+          4. Click Open Anyway for CC Decrypter, then confirm Open.
+
+          Only use CC Decrypter on files you own or have permission to decrypt."
             dmgforge background "$project_path" --image "$background_image"
             dmgforge arrow "$project_path" --show --color "#111417" --thickness 7
 
