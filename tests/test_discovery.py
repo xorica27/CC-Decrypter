@@ -131,9 +131,11 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(second.name, "P_x_video_decoded (2).mp4")
 
     def test_output_path_replaces_unsafe_project_characters(self) -> None:
+        # "?" stays a plain path component on every platform, unlike ":" which
+        # Windows pathlib parses as a drive.
         video = DraftVideo(
-            path=Path("/d/a:b/video.mp4"),
-            relative=Path("a:b/video.mp4"),
+            path=Path("/d/a?b/video.mp4"),
+            relative=Path("a?b/video.mp4"),
             size=10,
             cryptor_type=1,
         )
