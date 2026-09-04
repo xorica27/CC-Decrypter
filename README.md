@@ -28,16 +28,30 @@ time you open it.
 
 ## How To Use
 
-1. Open CC Decrypter.
-2. Click Browse next to the input field.
-3. Choose the CC video file you want to decrypt.
-4. Choose where to save the new MP4 file.
-5. Click Decode.
-6. Wait until the app finishes.
-7. Open the new MP4 in QuickTime, VLC, Premiere, Resolve, or another video app.
+1. Open CC Decrypter. It looks in your CapCut drafts folder automatically and
+   lists the videos it can decrypt.
+2. Click a video to select it. Click again to deselect. Pick as many as you
+   like.
+3. Click the big "Decrypt N videos" button.
+4. Decrypted copies are saved to your CC Decrypter Exports folder. Click
+   Change… to pick a different folder.
+5. Open the new MP4 files in QuickTime, VLC, Premiere, Resolve, or another
+   video app.
+
+Handy extras:
+
+- Each video in the list shows the project it belongs to and the date it was
+  created.
+- Not the right folder? Click Choose… (or the folder path itself) at the top
+  to pick another one — CC Decrypter remembers your choice for next time.
+- Prefer dark? Click the moon icon at the top right. CC Decrypter follows your
+  system appearance the first time you open it, then remembers your choice.
+- Have a single file? Click "Have a single file? Browse…" at the bottom.
+- Click "View log" to see what the app did.
 
 That is it. The app creates a separate decrypted copy, so you can keep the
-original file as a backup.
+original file as a backup. Some videos take longer than others — a few can
+take several minutes while the app works out how they were protected.
 
 ## What To Expect
 
