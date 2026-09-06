@@ -58,6 +58,9 @@ LIGHT = {
     "disabled_fill": "#e9ecf1",
     "disabled_text": "#9aa0aa",
     "entry_bg": "#ffffff",
+    "scroll_track": "#f1f2f5",
+    "scroll_thumb": "#c4c9d2",
+    "toggle_knob": "#ffffff",
 }
 DARK = {
     "bg": "#1e2025",
@@ -77,6 +80,9 @@ DARK = {
     "disabled_fill": "#2a2d33",
     "disabled_text": "#6b7280",
     "entry_bg": "#26282e",
+    "scroll_track": "#2a2d34",
+    "scroll_thumb": "#4d525c",
+    "toggle_knob": "#3a3e47",
 }
 GREEN = "#34c759"
 AMBER = "#e8a13c"
@@ -86,6 +92,13 @@ CONTENT_WIDTH = 640
 ROW_HEIGHT = 48
 VISIBLE_ROWS = 8
 LIST_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS
+THEME_TOGGLE_WIDTH = 72
+THEME_TOGGLE_HEIGHT = 28
+SCROLL_UNIT = 20
+LIST_BORDER = 1
+SCROLLBAR_WIDTH = 6
+SCROLLBAR_INSET = 3
+MIN_THUMB_HEIGHT = 30
 
 
 def human_size(size: int) -> str:
@@ -122,6 +135,7 @@ class DecrypterApp:
         self._results: list[DraftVideo] = []
         self._selected: set[int] = set()
         self._busy = False
+        self._thumb_drag: tuple[float, float] | None = None
         self._log_buffer: deque[str] = deque(maxlen=500)
         self._log_window: Toplevel | None = None
         self._log_text = None
@@ -207,14 +221,15 @@ class DecrypterApp:
             bg=self.c["bg"],
             highlightthickness=1,
             highlightbackground=self.c["hairline"],
-            yscrollincrement=20,
+            yscrollincrement=1,
         )
         self.list_canvas.pack(fill=X)
         self.list_canvas.bind("<Button-1>", self._on_list_click)
         self.list_canvas.bind("<Double-Button-1>", self._on_list_double_click)
-        self.list_canvas.bind("<MouseWheel>", self._on_list_wheel)
-        self.list_canvas.bind("<Button-4>", lambda e: self.list_canvas.yview_scroll(-1, "units"))
-        self.list_canvas.bind("<Button-5>", lambda e: self.list_canvas.yview_scroll(1, "units"))
+        self.list_canvas.bind("<B1-Motion>", self._on_list_drag)
+        self.list_canvas.bind("<ButtonRelease-1>", self._on_list_release)
+        self.list_canvas.bind("<Configure>", lambda e: self._draw_scrollbar())
+        self._bind_scrolling()
 
         self.counts_label = Label(main, font=self.f_status, fg=self.c["muted"], bg=self.c["bg"])
         self.counts_label.pack(pady=(14, 10))
@@ -244,12 +259,10 @@ class DecrypterApp:
             font=self.f_status,
             fg=self.c["accent_text"],
             bg=self.c["bg"],
-            cursor="hand2",
         )
         change.pack(side=LEFT)
         change.bind("<Button-1>", self._on_change_output)
         self.savelink.bind("<Button-1>", self._on_change_output)
-        self.savelink.config(cursor="hand2")
 
         status_row = Frame(footer, bg=self.c["bg"])
         status_row.pack(side=LEFT)
@@ -269,7 +282,6 @@ class DecrypterApp:
             font=self.f_status,
             fg=self.c["muted"],
             bg=self.c["bg"],
-            cursor="hand2",
         )
         browse_link.pack(side=RIGHT)
         browse_link.bind("<Button-1>", lambda e: self.show_single_file())
@@ -279,7 +291,6 @@ class DecrypterApp:
             font=self.f_status,
             fg=self.c["accent_text"],
             bg=self.c["bg"],
-            cursor="hand2",
         )
         log_link.pack(side=RIGHT)
         log_link.bind("<Button-1>", lambda e: self.show_log())
@@ -294,31 +305,59 @@ class DecrypterApp:
 
     def _build_theme_toggle(self, parent: Frame) -> None:
         canvas = Canvas(
-            parent, width=34, height=34, bg=self.c["bg"], highlightthickness=0
+            parent,
+            width=THEME_TOGGLE_WIDTH,
+            height=THEME_TOGGLE_HEIGHT,
+            bg=self.c["bg"],
+            highlightthickness=0,
         )
-        canvas.place(x=CONTENT_WIDTH - 34, y=14)
+        canvas.place(x=CONTENT_WIDTH - THEME_TOGGLE_WIDTH, y=16)
         self.toggle_canvas = canvas
-        self._draw_theme_icon(canvas)
-        canvas.tag_bind("t", "<Button-1>", self._on_toggle_theme)
-        canvas.tag_bind("t", "<Enter>", lambda e: canvas.config(cursor="hand2"))
-        canvas.tag_bind("t", "<Leave>", lambda e: canvas.config(cursor=""))
+        canvas.bind("<Button-1>", self._on_toggle_theme)
+        self._draw_theme_toggle()
 
-    def _draw_theme_icon(self, canvas: Canvas) -> None:
+    def _draw_theme_toggle(self) -> None:
+        """A two-segment control: a light half and a dark half, current one lit."""
+        canvas = self.toggle_canvas
         canvas.delete("all")
-        color = self.c["muted"]
-        if self.theme == "light":  # show a moon: "switch to dark"
-            canvas.create_oval(7, 7, 27, 27, fill=color, outline="", tags=("t",))
-            canvas.create_oval(14, 3, 33, 22, fill=self.c["bg"], outline="", tags=("t",))
-        else:  # show a sun: "switch to light"
-            canvas.create_oval(12, 12, 22, 22, fill=color, outline="", tags=("t",))
-            for step in range(8):
-                angle = step * math.pi / 4
-                dx = math.cos(angle)
-                dy = math.sin(angle)
-                canvas.create_line(
-                    17 + 8 * dx, 17 + 8 * dy, 17 + 11.5 * dx, 17 + 11.5 * dy,
-                    fill=color, width=1,
-                )
+        width, height = THEME_TOGGLE_WIDTH, THEME_TOGGLE_HEIGHT
+        half = width / 2
+        light_side = self.theme == "light"
+
+        self._round_rect(
+            canvas, 0.5, 0.5, width - 0.5, height - 0.5, height / 2,
+            fill=self.c["pill_bg"], outline=self.c["pill_border"],
+        )
+        knob_x1 = 2.0 if light_side else half
+        self._round_rect(
+            canvas, knob_x1, 2, knob_x1 + half - 2, height - 2, (height - 4) / 2,
+            fill=self.c["toggle_knob"], outline=self.c["pill_border"],
+        )
+
+        self._draw_sun(canvas, half / 2 + 1, height / 2, self._segment_color(light_side))
+        self._draw_moon(
+            canvas, width - half / 2 - 1, height / 2,
+            self._segment_color(not light_side),
+            self.c["toggle_knob"] if not light_side else self.c["pill_bg"],
+        )
+
+    def _segment_color(self, active: bool) -> str:
+        return self.c["text"] if active else self.c["faint"]
+
+    def _draw_sun(self, canvas: Canvas, cx: float, cy: float, color: str) -> None:
+        canvas.create_oval(cx - 3.5, cy - 3.5, cx + 3.5, cy + 3.5, fill=color, outline="")
+        for step in range(8):
+            angle = step * math.pi / 4
+            dx = math.cos(angle)
+            dy = math.sin(angle)
+            canvas.create_line(
+                cx + 5.5 * dx, cy + 5.5 * dy, cx + 8 * dx, cy + 8 * dy,
+                fill=color, width=1,
+            )
+
+    def _draw_moon(self, canvas: Canvas, cx: float, cy: float, color: str, behind: str) -> None:
+        canvas.create_oval(cx - 7, cy - 7, cx + 7, cy + 7, fill=color, outline="")
+        canvas.create_oval(cx - 2.5, cy - 9, cx + 11, cy + 5, fill=behind, outline="")
 
     def _build_folder_pill(self, parent: Frame) -> None:
         self.folder_canvas = Canvas(
@@ -328,13 +367,6 @@ class DecrypterApp:
         self.folder_canvas.tag_bind("pick", "<Button-1>", self._on_choose_folder)
         self.folder_canvas.tag_bind("choose", "<Button-1>", self._on_choose_folder)
         self.folder_canvas.tag_bind("rescan", "<Button-1>", lambda e: self.start_scan())
-        for tag in ("pick", "choose", "rescan"):
-            self.folder_canvas.tag_bind(
-                tag, "<Enter>", lambda e: self.folder_canvas.config(cursor="hand2")
-            )
-            self.folder_canvas.tag_bind(
-                tag, "<Leave>", lambda e: self.folder_canvas.config(cursor="")
-            )
 
     def _draw_folder_pill(self) -> None:
         canvas = self.folder_canvas
@@ -451,6 +483,7 @@ class DecrypterApp:
 
         total_height = len(self._results) * ROW_HEIGHT
         canvas.configure(scrollregion=(0, 0, CONTENT_WIDTH, total_height))
+        self._draw_scrollbar()
 
     def _row_sublabel(self, video: DraftVideo) -> str:
         parts = []
@@ -467,6 +500,8 @@ class DecrypterApp:
         return None
 
     def _on_list_click(self, event) -> None:
+        if self._on_scrollbar_press(event):
+            return
         if self._busy:
             return
         index = self._row_at(self.list_canvas.canvasy(event.y))
@@ -481,10 +516,35 @@ class DecrypterApp:
         self._update_cta()
 
     def _on_list_double_click(self, event) -> None:
+        if self._thumb_drag is not None or self._on_scrollbar_press(event):
+            return
         index = self._row_at(self.list_canvas.canvasy(event.y))
         if index is None or not self._results[index].decryptable:
             return
         self.show_single_file(preset=str(self._results[index].path))
+
+    # ------------------------------------------------------------ scrolling
+
+    def _bind_scrolling(self) -> None:
+        """Route scrolling for the whole window to the video list.
+
+        Tk hands a wheel event to the widget under the pointer, so binding only
+        the list canvas meant the wheel did nothing whenever the pointer sat
+        anywhere else in the window. Binding the toplevel catches those events
+        as well, because every child widget carries the toplevel in its bind
+        tags. The log and single-file windows are separate toplevels, so their
+        own scrolling is untouched.
+        """
+        page = max(1, LIST_HEIGHT // SCROLL_UNIT - 1)
+        self.root.bind("<MouseWheel>", self._on_list_wheel)
+        self.root.bind("<Button-4>", lambda e: self._scroll_list(-3))
+        self.root.bind("<Button-5>", lambda e: self._scroll_list(3))
+        self.root.bind("<Up>", lambda e: self._scroll_list(-1))
+        self.root.bind("<Down>", lambda e: self._scroll_list(1))
+        self.root.bind("<Prior>", lambda e: self._scroll_list(-page))
+        self.root.bind("<Next>", lambda e: self._scroll_list(page))
+        self.root.bind("<Home>", lambda e: self._scroll_list_to_top())
+        self.root.bind("<End>", lambda e: self._scroll_list_to_pixel(self._max_scroll()))
 
     def _on_list_wheel(self, event) -> None:
         delta = event.delta
@@ -494,7 +554,106 @@ class DecrypterApp:
             steps = -int(delta / 120)
         else:
             steps = -1 if delta > 0 else 1
-        self.list_canvas.yview_scroll(steps, "units")
+        self._scroll_list(steps)
+
+    def _scroll_list(self, steps: int) -> None:
+        self._scroll_list_by(steps * SCROLL_UNIT)
+
+    def _scroll_list_by(self, pixels: float) -> None:
+        self._scroll_list_to_pixel(self._list_top() + pixels)
+
+    def _scroll_list_to_pixel(self, top: float) -> None:
+        """Show the list starting `top` pixels down, clamped to the last row."""
+        target = int(min(max(top, 0.0), self._max_scroll()))
+        delta = target - self._list_top()
+        if delta:
+            self.list_canvas.yview_scroll(delta, "units")
+        self._draw_scrollbar()
+
+    def _scroll_list_to_top(self) -> None:
+        self._scroll_list_to_pixel(0.0)
+
+    def _list_top(self) -> int:
+        """First list pixel currently on screen (canvasy(0) sits on the border)."""
+        return int(self.list_canvas.canvasy(LIST_BORDER))
+
+    def _list_view_height(self) -> int:
+        height = self.list_canvas.winfo_height()
+        if height <= 1:
+            height = LIST_HEIGHT + 2 * LIST_BORDER
+        return height - 2 * LIST_BORDER
+
+    def _max_scroll(self) -> float:
+        return max(0.0, len(self._results) * ROW_HEIGHT - self._list_view_height())
+
+    def _thumb_geometry(self) -> tuple[float, float, float] | None:
+        """Return (track_top, thumb_top, thumb_height) in widget coordinates.
+
+        None means the rows all fit and no scrollbar is needed.
+        """
+        limit = self._max_scroll()
+        if limit <= 0:
+            return None
+        view = self._list_view_height()
+        track_top = float(SCROLLBAR_INSET)
+        track_height = view - 2 * SCROLLBAR_INSET
+        thumb_height = max(MIN_THUMB_HEIGHT, track_height * view / (view + limit))
+        travel = max(0.0, track_height - thumb_height)
+        progress = min(max(self._list_top() / limit, 0.0), 1.0)
+        return track_top, track_top + travel * progress, thumb_height
+
+    def _draw_scrollbar(self) -> None:
+        canvas = self.list_canvas
+        canvas.delete("scrollbar")
+        geometry = self._thumb_geometry()
+        if geometry is None:
+            return
+        track_top, thumb_top, thumb_height = geometry
+        offset = self._list_top()
+        x2 = CONTENT_WIDTH - SCROLLBAR_INSET
+        x1 = x2 - SCROLLBAR_WIDTH
+        radius = SCROLLBAR_WIDTH / 2
+        track_bottom = self._list_view_height() - SCROLLBAR_INSET
+        self._round_rect(
+            canvas, x1, offset + track_top, x2, offset + track_bottom, radius,
+            fill=self.c["scroll_track"], outline="", tags=("scrollbar",),
+        )
+        self._round_rect(
+            canvas, x1, offset + thumb_top, x2, offset + thumb_top + thumb_height, radius,
+            fill=self.c["scroll_thumb"], outline="", tags=("scrollbar",),
+        )
+
+    def _on_scrollbar_press(self, event) -> bool:
+        """Handle a click in the scrollbar column; True if the list should not select."""
+        self._thumb_drag = None
+        if event.x < CONTENT_WIDTH - SCROLLBAR_INSET - SCROLLBAR_WIDTH - 4:
+            return False
+        geometry = self._thumb_geometry()
+        if geometry is None:
+            return False
+        _, thumb_top, thumb_height = geometry
+        if thumb_top <= event.y <= thumb_top + thumb_height:
+            self._thumb_drag = (event.y, self._list_top())
+        else:
+            page = max(1, LIST_HEIGHT // SCROLL_UNIT - 1)
+            self._scroll_list(-page if event.y < thumb_top else page)
+        return True
+
+    def _on_list_drag(self, event) -> None:
+        if self._thumb_drag is None:
+            return
+        start_y, start_top = self._thumb_drag
+        geometry = self._thumb_geometry()
+        if geometry is None:
+            return
+        track_top, _, thumb_height = geometry
+        travel = self._list_view_height() - 2 * track_top - thumb_height
+        if travel <= 0:
+            return
+        self._scroll_list_to_pixel(start_top + (event.y - start_y) / travel * self._max_scroll())
+
+    def _on_list_release(self, event) -> None:
+        self._thumb_drag = None
 
     def _update_counts(self) -> None:
         if not self._results:
@@ -530,7 +689,6 @@ class DecrypterApp:
         self._cta_text_id = canvas.create_text(
             CONTENT_WIDTH / 2, 23, text=label, font=self.f_cta, fill=text_color, tags=("cta",)
         )
-        canvas.config(cursor="hand2" if count and not self._busy else "")
 
     def _on_cta_click(self, _event) -> None:
         if self._busy or not self._selected:
@@ -555,8 +713,11 @@ class DecrypterApp:
 
     # ---------------------------------------------------------------- theme
 
-    def _on_toggle_theme(self, _event) -> None:
-        self.theme = "dark" if self.theme == "light" else "light"
+    def _on_toggle_theme(self, event) -> None:
+        theme = "light" if event.x < THEME_TOGGLE_WIDTH / 2 else "dark"
+        if theme == self.theme:
+            return
+        self.theme = theme
         save_theme(self.theme)
         self._apply_theme()
 
@@ -613,7 +774,7 @@ class DecrypterApp:
         self._selected.clear()
         self._draw_list()
         self._update_counts()
-        self.list_canvas.yview_moveto(0)
+        self._scroll_list_to_top()
         self._set_status("working", "Searching your CapCut drafts folder…")
         self.write_log(f"Searching {self.drafts_path} …")
         threading.Thread(target=self._scan_worker, daemon=True).start()
@@ -637,7 +798,7 @@ class DecrypterApp:
         self._results = [video for video in results if video.decryptable]
         unsupported = len(results) - len(self._results)
         self._selected.clear()
-        self.list_canvas.yview_moveto(0)
+        self._scroll_list_to_top()
         self._draw_list()
         self._update_counts()
         self._update_cta()

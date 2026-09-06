@@ -42,10 +42,13 @@ Handy extras:
 
 - Each video in the list shows the project it belongs to and the date it was
   created.
+- More videos than fit? Scroll the list with your mouse wheel or trackpad, drag
+  the scrollbar on the right, or use the arrow and Page Up/Down keys.
 - Not the right folder? Click Choose… (or the folder path itself) at the top
   to pick another one — CC Decrypter remembers your choice for next time.
-- Prefer dark? Click the moon icon at the top right. CC Decrypter follows your
-  system appearance the first time you open it, then remembers your choice.
+- Prefer dark? Use the sun/moon switch at the top right — click the sun for
+  light, the moon for dark. CC Decrypter follows your system appearance the
+  first time you open it, then remembers your choice.
 - Have a single file? Click "Have a single file? Browse…" at the bottom.
 - Click "View log" to see what the app did.
 

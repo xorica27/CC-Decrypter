@@ -3,6 +3,18 @@
 All notable changes to CC Decrypter are documented here. Download the latest
 version from the GitHub Releases page.
 
+## 0.2.1 — 2026-09-06
+
+- Fixed: the video list would not scroll. The mouse wheel and trackpad now
+  scroll the list from anywhere in the window, a slim scrollbar shows where you
+  are in a long list and can be dragged, and the arrow, Page Up/Down, Home, and
+  End keys scroll too.
+- The light/dark switch is now a proper two-segment control — a sun half and a
+  moon half, with the current one highlighted — instead of a bare icon. Click a
+  half to pick that appearance.
+- The mouse pointer no longer changes into a hand over buttons and links; it
+  stays the normal arrow everywhere in the main window.
+
 ## 0.2.0 — 2026-09-04
 
 The app got a full redesign around your CapCut drafts folder.

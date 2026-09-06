@@ -1,5 +1,5 @@
 #define MyAppName "CC Decrypter"
-#define MyAppVersion "0.1.11"
+#define MyAppVersion "0.2.1"
 #define MyAppPublisher "Xorica"
 #define MyAppExeName "CC Decrypter.exe"
 
