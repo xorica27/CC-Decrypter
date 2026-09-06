@@ -104,14 +104,25 @@ class ListScrollingTests(unittest.TestCase):
 
         self.assertEqual(self.app._selected, set())
 
+    def test_page_and_end_keys_are_bound_to_the_window(self) -> None:
+        bound = self.root.bind()
+
+        for sequence in ("<Key-Prior>", "<Key-Next>", "<Key-Home>", "<Key-End>",
+                         "<Key-Up>", "<Key-Down>"):
+            self.assertIn(sequence, bound)
+
     def test_page_and_end_keys_scroll_the_list(self) -> None:
         self._fill(30)
+        # Tk hands key events to the focus widget and drops them when the
+        # toplevel holds no focus, which is how a CI desktop starts out.
+        self.root.focus_force()
+        self.root.update()
 
-        self.root.event_generate("<Next>", x=5, y=5)
+        self.root.event_generate("<Next>")
         self.root.update()
         self.assertGreater(self.app._list_top(), 0)
 
-        self.root.event_generate("<End>", x=5, y=5)
+        self.root.event_generate("<End>")
         self.root.update()
         self.assertEqual(self.app._list_top(), self.app._max_scroll())
 
