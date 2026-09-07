@@ -4,85 +4,147 @@
 
 # CC Decrypter
 
-CC Decrypter helps you turn supported CC video files into normal MP4 files that
-you can open in your usual video apps.
+CC Decrypter makes protected videos from your CapCut drafts playable again.
 
-If a CC video file from your local draft or cache folder will not play properly,
-this app can try to decrypt it and save a new playable copy. Your original file
-is not changed.
+Videos you edit in CapCut are sometimes saved in a protected format. They will
+not open in QuickTime, VLC, Premiere, or other apps. CC Decrypter finds those
+videos on your computer, turns them into normal MP4 files, and saves them in a
+folder you choose.
 
-Please only use CC Decrypter on files you own or have permission to decrypt.
+Your original videos are never changed — CC Decrypter always creates a new
+copy.
 
-## Download
+Please only use CC Decrypter on videos you own or have permission to decrypt.
 
-Download the latest version from the GitHub Releases page.
+## Download and Install
 
-Choose the file that matches your computer:
+1. Open the [latest release page](https://github.com/xorica27/CC-Decrypter/releases/latest).
+2. Download the file for your computer:
 
-- Apple Silicon Mac: for M1, M2, M3, or newer Macs. Needs macOS 12 or newer.
-- Intel Mac: for older Intel-based Macs. Needs macOS 12 or newer.
-- Windows: for Windows 64-bit PCs.
+   | Your computer | File to download |
+   | --- | --- |
+   | Mac with M1, M2, M3, or newer chip | `CC-Decrypter-macOS-Apple-Silicon.dmg` |
+   | Older Intel Mac | `CC-Decrypter-macOS-Intel.dmg` |
+   | Windows 64-bit PC | `CC-Decrypter-Windows-x64-Setup.exe` |
 
-The app is currently unsigned, so your computer may show a warning the first
-time you open it.
+   Both Mac versions need macOS 12 or newer.
 
-## How To Use
+3. Install the app:
+   - **Mac:** open the downloaded DMG file and drag **CC Decrypter** into your
+     Applications folder.
+   - **Windows:** run the downloaded Setup file.
 
-1. Open CC Decrypter. It looks in your CapCut drafts folder automatically and
-   lists the videos it can decrypt.
-2. Click a video to select it. Click again to deselect. Pick as many as you
-   like.
-3. Click the big "Decrypt N videos" button. A progress bar shows how far along
-   it is, and Cancel stops after the video being worked on.
-4. Decrypted copies are saved to your CC Decrypter Exports folder. Click
-   Change… to pick a different folder — CC Decrypter remembers it for next
-   time.
-5. Open the new MP4 files in QuickTime, VLC, Premiere, Resolve, or another
-   video app.
+### Opening the app the first time
 
-Handy extras:
+CC Decrypter is unsigned, so your computer may ask for confirmation the first
+time you open it. This is normal for apps without a paid security certificate,
+and you only need to confirm once.
 
-- Each video in the list shows the project it belongs to and the date it was
-  created.
-- Newest videos come first. Click Date, Name, or Size above the list to sort by
-  that instead, and click the same one again to flip the order. CC Decrypter
-  remembers how you like it sorted.
-- More videos than fit? Scroll with your mouse wheel or trackpad, drag the
-  scrollbar, use the arrow keys, Page Up/Down or Home/End, or start typing a
-  filename to jump to it.
-- Not the right folder? Click Choose… (or the folder path itself) at the top
-  to pick another one — CC Decrypter remembers your choice for next time. If
-  that folder later disappears, the app says so instead of quietly scanning
-  somewhere else.
-- Prefer dark? Use the sun/moon switch at the top right — click the sun for
-  light, the moon for dark. CC Decrypter follows your system appearance the
-  first time you open it, then remembers your choice.
-- Videos you have already decrypted into the current output folder are marked
-  "exported", so you do not make second copies by accident.
-- Click the "Saved to" path to open your exports folder.
-- Click "View log" to see what the app did, and "About" for the version number
-  and a Check for updates button.
-- Keyboard: Cmd/Ctrl+R rescans, Cmd/Ctrl+A selects everything, Cmd/Ctrl+L opens
-  the log, Cmd/Ctrl+Return starts decrypting.
+- **Mac:** if your Mac says the app cannot be opened, right-click (or
+  Control-click) CC Decrypter in Applications, choose **Open**, then choose
+  **Open** again. You can also go to System Settings → Privacy & Security and
+  click **Open Anyway**.
+- **Windows:** if a SmartScreen warning appears, click **More info**, then
+  **Run anyway**.
 
-That is it. The app creates a separate decrypted copy, so you can keep the
-original file as a backup. Some videos take longer than others — a few can
-take several minutes while the app works out how they were protected.
+## How to Use CC Decrypter
 
-## What To Expect
+### Step 1: Open the app
 
-CC Decrypter works with supported CC video files from local draft/cache folders.
-It is not a general video converter, and it may not work on every file.
+CC Decrypter looks in your CapCut drafts folder by itself and lists the videos
+it can decrypt. Each row shows the video name, the project it belongs to, the
+date it was created, and how big it is.
 
-If the app cannot decrypt your video, keep the original file and share the error
-message when reporting the issue.
+### Step 2: Pick your videos
+
+Click a video to select it — a blue check mark appears. Click it again to
+remove it. You can pick as many videos as you like, drag over several at once,
+or hold Shift to take a whole run of them.
+
+The line under the list shows how many videos you selected and their total
+size.
+
+### Step 3: Click the decrypt button
+
+Press the big blue button. It says **Decrypt 3 videos** (or however many you
+picked).
+
+A progress bar shows how far along it is and which video it is working on, and
+**Cancel** stops after the video in flight. When it is done you will see
+**Last run: 3 decrypted · 0 failed** at the bottom of the window, and the
+finished message offers **Show in Finder**.
+
+### Step 4: Watch your videos
+
+Open the new MP4 files in QuickTime, VLC, Premiere, Resolve, or any other
+video app. They are normal video files now.
+
+## Helpful Extras
+
+- **Sort the list.** Use **Date / Name / Size** above the list. Click the same
+  one again to flip the order. CC Decrypter remembers how you like it sorted.
+- **Move through the list.** Scroll with your trackpad or mouse, use the arrow
+  keys, Page Up/Down or Home/End, or start typing a filename to jump to it.
+- **Your videos are somewhere else?** Click **Choose…** at the top and pick
+  any folder. CC Decrypter remembers your choice for next time. Click
+  **Rescan** to refresh the list.
+- **Added new videos in CapCut?** Click **Rescan** and they will appear.
+- **Already decrypted something?** Those videos are marked **exported**, and if
+  you pick them again CC Decrypter offers to skip them instead of making a
+  second copy.
+- **Open your exports.** Click the **Saved to** path at the bottom to open that
+  folder.
+- **Prefer dark?** Use the sun/moon switch at the top right. The app matches
+  your computer's appearance until you pick one, then remembers your choice.
+- **Want to see what the app is doing?** Click **View log** at the bottom.
+- **Which version am I running?** Click **About** at the bottom. It also has a
+  **Check for updates** button and a **Copy details** button for bug reports.
+- **Keyboard:** Cmd/Ctrl+R rescans, Cmd/Ctrl+A selects everything,
+  Cmd/Ctrl+Return starts decrypting, Cmd/Ctrl+L opens the log.
+
+## Questions and Answers
+
+**I do not see my video in the list. Why?**
+The list only shows videos that are still protected. If a video already plays
+normally in other apps, it does not need decrypting, so it is not listed.
+
+**One or more videos failed. What now?**
+Open **View log** to see what went wrong, and keep the original file. A few
+videos use a protection that CC Decrypter cannot unlock yet.
+
+**A video is taking a very long time. Is it stuck?**
+Probably not. Some videos take several minutes while CC Decrypter works out
+how they were protected. The progress bar names the video it is working on, and
+**View log** shows it working.
+
+**Where are my decrypted videos?**
+In the **CC Decrypter Exports** folder in your home folder, unless you picked
+somewhere else with **Change…** — that choice is remembered too. Click the
+**Saved to** path to open the folder. Files that already exist are never
+overwritten; you always get a fresh copy.
+
+**CC Decrypter did not find my CapCut folder.**
+Click **Choose…** and point it at your drafts folder. It looks in the usual
+places for the CapCut and JianyingPro apps, including the sandboxed Mac App
+Store version, but a custom install can live anywhere. If a folder you picked
+before goes missing, the app says so rather than quietly scanning elsewhere.
+
+**Does CC Decrypter change my original videos?**
+No. It only reads them and writes a new, separate file.
+
+**Can it convert any video?**
+No. CC Decrypter only decrypts protected draft videos it supports. It is not a
+general video converter.
 
 ## Notes
 
-- The Apple Silicon Mac version is the recommended Mac version when possible.
-- The Intel Mac version may not work perfectly on every Intel Mac yet.
-- The Windows version has not been manually tested yet. If you try it, feedback
-  is very welcome.
+- The app is notarization-free (unsigned), so the first-open warning described
+  above is expected.
+- If a video cannot be decrypted, your original file is still safe. Please
+  share the error message from **View log**, and the details from **About**,
+  when asking for help.
+- Only use CC Decrypter on videos you made yourself or have permission to
+  decrypt.
 
 ## For Developers
 
@@ -93,6 +155,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 PYTHONPATH=src python -m cc_decrypter.app
+```
+
+Run the tests (they use Qt's offscreen platform, so no window appears):
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests
 ```
 
 Build locally:
