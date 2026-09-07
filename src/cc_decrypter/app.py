@@ -24,12 +24,10 @@ def _write_startup_log(message: str) -> None:
 def _run_smoke_test() -> None:
     _write_startup_log("running smoke test")
 
-    from tkinter import Tk
+    from PySide6.QtWidgets import QApplication
 
-    root = Tk()
-    root.withdraw()
-    root.update_idletasks()
-    root.destroy()
+    app = QApplication.instance() or QApplication([])
+    app.processEvents()
     print("CC Decrypter smoke test passed")
 
 

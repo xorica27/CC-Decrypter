@@ -3,6 +3,40 @@
 All notable changes to CC Decrypter are documented here. Download the latest
 version from the GitHub Releases page.
 
+## 0.3.0 — 2026-09-07
+
+The window was rebuilt on Qt.
+
+- The video list is a real list control now, so scrolling, clicking, hovering
+  and the scrollbar belong to the operating system instead of being drawn by
+  hand. Clicking a video is reliable everywhere in the row, including at the
+  right end and on a double click.
+- Move through the list with the arrow keys, Page Up/Down and Home/End, or
+  start typing a filename to jump to it. Shift-click picks a range and
+  Cmd-click (Ctrl-click on Windows) picks scattered videos.
+- Sort the list: click Date, Name, or Size above it, and click the same one
+  again to reverse. Newest first is the default, and your choice is remembered.
+- The folder your decrypted copies are saved to is remembered between runs,
+  like the drafts folder and the appearance already were.
+- CC Decrypter tells you when the drafts folder you picked before has gone
+  missing, instead of silently scanning the default folder.
+- More CapCut installs are found automatically: the Mac App Store build, whose
+  drafts sit inside its sandbox container, and the JianyingPro build on both
+  platforms.
+- The light/dark switch follows your system by default and can be pinned to
+  either; pinning one sets the whole window's colours rather than relying on
+  the platform to repaint itself.
+- A tidier window throughout: centred heading, a rounded drafts-folder bar and
+  video list, a segmented light/dark switch, and a selection that reads as a
+  rounded band.
+- Removed the separate single-file decrypt window. Pick the video from the list
+  instead — it does the same job in one step.
+- Fixed: on Windows, a machine with no CapCut install was shown a macOS-style
+  drafts path, and a saved folder inside your home folder was displayed with
+  mixed slashes.
+- macOS 12 or newer is required (earlier builds claimed 10.13), and the Mac
+  download is larger, around 80 MB unpacked.
+
 ## 0.2.1 — 2026-09-06
 
 - Fixed: the video list would not scroll. The mouse wheel and trackpad now

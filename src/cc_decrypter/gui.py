@@ -1,813 +1,722 @@
+"""The CC Decrypter window, built on Qt.
+
+The list, its scrolling, hit testing, hover and keyboard handling all belong to
+Qt here. This module only says what a row looks like and what a click means.
+"""
+
 from __future__ import annotations
 
-import math
 import threading
 from collections import deque
 from pathlib import Path
-from tkinter import (
-    BOTH,
-    BOTTOM,
-    END,
-    LEFT,
-    RIGHT,
-    TOP,
-    X,
-    Button,
-    Canvas,
-    Entry,
-    Frame,
-    Label,
-    StringVar,
-    Tk,
-    Toplevel,
-    scrolledtext,
+
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPalette, QPen
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QSizePolicy,
+    QStyle,
+    QStyledItemDelegate,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
-from tkinter import filedialog, font as tkfont, messagebox
 
 from cc_decrypter.decoder import DecodeError, decode_file
 from cc_decrypter.discovery import (
     DraftVideo,
-    default_drafts_root,
     find_protected_videos,
     output_path_for,
+    resolve_drafts_folder,
+    resolve_output_folder,
 )
 from cc_decrypter.settings import (
-    detect_system_theme,
     load_drafts_folder,
+    load_output_folder,
+    load_sort,
     load_theme,
     save_drafts_folder,
+    save_output_folder,
+    save_sort,
     save_theme,
 )
 
-
-LIGHT = {
-    "bg": "#ffffff",
-    "text": "#14171a",
-    "body": "#4b5560",
-    "muted": "#8a8f98",
-    "faint": "#b9bec7",
-    "hairline": "#eceef2",
-    "row_line": "#f4f5f7",
-    "pill_bg": "#f6f7f9",
-    "pill_border": "#e8eaee",
-    "check_border": "#cfd4db",
-    "check_fill": "#ffffff",
-    "accent": "#2f6bff",
-    "accent_text": "#2f6bff",
-    "accent_active": "#245bd9",
-    "disabled_fill": "#e9ecf1",
-    "disabled_text": "#9aa0aa",
-    "entry_bg": "#ffffff",
-    "scroll_track": "#f1f2f5",
-    "scroll_thumb": "#c4c9d2",
-    "toggle_knob": "#ffffff",
-}
-DARK = {
-    "bg": "#1e2025",
-    "text": "#e8eaee",
-    "body": "#c9cdd4",
-    "muted": "#8a8f98",
-    "faint": "#6b7280",
-    "hairline": "#31343c",
-    "row_line": "#2a2d34",
-    "pill_bg": "#26282e",
-    "pill_border": "#31343c",
-    "check_border": "#4a4f59",
-    "check_fill": "#26282e",
-    "accent": "#3d78ff",
-    "accent_text": "#5c93ff",
-    "accent_active": "#2f6bff",
-    "disabled_fill": "#2a2d33",
-    "disabled_text": "#6b7280",
-    "entry_bg": "#26282e",
-    "scroll_track": "#2a2d34",
-    "scroll_thumb": "#4d525c",
-    "toggle_knob": "#3a3e47",
-}
+ACCENT = "#2f6bff"
 GREEN = "#34c759"
 AMBER = "#e8a13c"
 RED = "#e5484d"
+GREY = "#8a8f98"
 
-CONTENT_WIDTH = 640
-ROW_HEIGHT = 48
-VISIBLE_ROWS = 8
-LIST_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS
-THEME_TOGGLE_WIDTH = 72
-THEME_TOGGLE_HEIGHT = 28
-SCROLL_UNIT = 20
-LIST_BORDER = 1
-SCROLLBAR_WIDTH = 6
-SCROLLBAR_INSET = 3
-MIN_THUMB_HEIGHT = 30
+LIGHT_TOKENS = {
+    "accent": ACCENT,
+    "accent_hover": "#245bd9",
+    "surface": "#f5f6f8",
+    "surface_hover": "#e9ebef",
+    "border": "#e4e7ec",
+    "list_bg": "#ffffff",
+    "disabled_bg": "#edeff3",
+    "disabled_fg": "#a2a8b2",
+    "window": "#f2f3f5",
+    "text": "#14171a",
+}
+DARK_TOKENS = {
+    "accent": ACCENT,
+    "accent_hover": "#5285ff",
+    "surface": "#26282e",
+    "surface_hover": "#31343c",
+    "border": "#33363e",
+    "list_bg": "#1b1d21",
+    "disabled_bg": "#2a2d33",
+    "disabled_fg": "#6b7280",
+    "window": "#1e2025",
+    "text": "#e8eaee",
+}
+
+ROW_HEIGHT = 60
+CONTENT_WIDTH = 660
+# label, sort key, and whether that column starts on its largest/newest value
+SORT_OPTIONS = (
+    ("Date", "date", True),
+    ("Name", "name", False),
+    ("Size", "size", True),
+)
+SORT_KEYS = {
+    "date": lambda video: video.created,
+    "name": lambda video: video.path.name.lower(),
+    "size": lambda video: video.size,
+}
+
+def tokens(theme: str | None = None) -> dict[str, str]:
+    """Colours for an explicit choice, or for whatever the system is showing."""
+    scheme = theme or current_color_scheme()
+    return DARK_TOKENS if scheme == "dark" else LIGHT_TOKENS
+
+
+def stylesheet(theme: str | None = None) -> str:
+    t = tokens(theme)
+    return f"""
+QLabel#step {{ color: {GREY}; font-size: 11px; font-weight: 700; }}
+QLabel#subtitle, QLabel#counts {{ color: {GREY}; }}
+
+QFrame#pill {{
+    background: {t["surface"]};
+    border: 1px solid {t["border"]};
+    border-radius: 11px;
+}}
+QLabel#path {{ color: palette(text); }}
+
+QToolButton#link {{
+    color: {t["accent"]};
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 9px;
+    font-weight: 600;
+}}
+QToolButton#link:hover {{ background: {t["surface_hover"]}; }}
+QToolButton#link:pressed {{ background: {t["border"]}; }}
+
+QToolButton#sort {{
+    color: {GREY};
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 9px;
+    font-weight: 600;
+}}
+QToolButton#sort:hover {{ background: {t["surface_hover"]}; }}
+QToolButton#sort[active="true"] {{ color: {t["accent"]}; }}
+
+QToolButton#segment {{
+    background: {t["surface"]};
+    border: 1px solid {t["border"]};
+    color: {GREY};
+    font-size: 14px;
+    padding: 0;
+}}
+QToolButton#segment[side="light"] {{
+    border-top-left-radius: 9px; border-bottom-left-radius: 9px; border-right: none;
+}}
+QToolButton#segment[side="dark"] {{
+    border-top-right-radius: 9px; border-bottom-right-radius: 9px;
+}}
+QToolButton#segment:hover {{ background: {t["surface_hover"]}; }}
+QToolButton#segment:checked {{ background: {t["list_bg"]}; color: palette(text); }}
+
+QListWidget {{
+    background: {t["list_bg"]};
+    border: 1px solid {t["border"]};
+    border-radius: 11px;
+    padding: 4px 0px;
+    outline: none;
+}}
+
+QPushButton#cta {{
+    background: {t["accent"]};
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+}}
+QPushButton#cta:hover:enabled {{ background: {t["accent_hover"]}; }}
+QPushButton#cta:disabled {{ background: {t["disabled_bg"]}; color: {t["disabled_fg"]}; }}
+"""
 
 
 def human_size(size: int) -> str:
-    if size >= 1024 * 1024 * 1024:
-        return f"{size / (1024 * 1024 * 1024):.1f} GB"
-    if size >= 1024 * 1024:
-        return f"{size / (1024 * 1024):.1f} MB"
+    if size >= 1024 ** 3:
+        return f"{size / 1024 ** 3:.1f} GB"
+    if size >= 1024 ** 2:
+        return f"{size / 1024 ** 2:.1f} MB"
     return f"{size / 1024:.0f} KB"
 
 
-class DecrypterApp:
-    def __init__(self, root: Tk):
-        self.root = root
-        root.title("CC Decrypter")
-        root.geometry("880x760")
-        root.minsize(720, 680)
+class ElidingPathLabel(QLabel):
+    """Shows a path, shortened in the middle to whatever width it is given."""
 
-        self.f_title = tkfont.Font(size=-21, weight="bold")
-        self.f_sub = tkfont.Font(size=-12)
-        self.f_step = tkfont.Font(size=-10, weight="bold")
-        self.f_name = tkfont.Font(size=-12)
-        self.f_small = tkfont.Font(size=-10)
-        self.f_small_bold = tkfont.Font(size=-10, weight="bold")
-        self.f_status = tkfont.Font(size=-11)
-        self.f_cta = tkfont.Font(size=-13, weight="bold")
-        self.f_check = tkfont.Font(size=-9, weight="bold")
-        mono_family = "Menlo" if "Menlo" in tkfont.families(root) else "Courier"
-        self.f_mono = tkfont.Font(family=mono_family, size=-10)
+    clicked = Signal()
 
-        self.theme = load_theme() or detect_system_theme()
-        self.c = DARK if self.theme == "dark" else LIGHT
-        self._status = ("neutral", "Starting…")
+    def __init__(self) -> None:
+        super().__init__()
+        self._full = ""
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
-        self._results: list[DraftVideo] = []
-        self._selected: set[int] = set()
-        self._busy = False
-        self._thumb_drag: tuple[float, float] | None = None
-        self._log_buffer: deque[str] = deque(maxlen=500)
-        self._log_window: Toplevel | None = None
-        self._log_text = None
-        self._single_window: Toplevel | None = None
-        self._single_log = None
-        self._single_button: Button | None = None
+    def setFullText(self, text: str) -> None:  # noqa: N802 - matches Qt naming
+        self._full = text
+        self.setToolTip(text)
+        self._elide()
 
-        self.input_var = StringVar()
-        self.output_var = StringVar()
-        saved_folder = load_drafts_folder()
-        if saved_folder is not None and saved_folder.is_dir():
-            self.drafts_path = saved_folder
+    def _elide(self) -> None:
+        available = max(40, self.contentsRect().width())
+        self.setText(self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideMiddle, available))
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        self._elide()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self.clicked.emit()
+        super().mousePressEvent(event)
+
+
+class VideoRow(QStyledItemDelegate):
+    """Draws one video. Qt decides which row this is and what state it is in."""
+
+    def sizeHint(self, option, index) -> QSize:  # noqa: N802 - Qt naming
+        return QSize(0, ROW_HEIGHT)
+
+    def paint(self, painter: QPainter, option, index) -> None:
+        video: DraftVideo = index.data(Qt.ItemDataRole.UserRole)
+        if video is None:
+            return
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        palette = option.palette
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        accent = QColor(ACCENT)
+        text_color = palette.text().color()
+        muted = QColor(text_color)
+        muted.setAlpha(140)
+
+        rect = option.rect
+        body = rect.adjusted(8, 2, -8, -2)
+        if selected or hovered:
+            tint = QColor(accent if selected else text_color)
+            tint.setAlpha(34 if selected else 14)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(tint)
+            painter.drawRoundedRect(body, 9, 9)
+
+        circle = rect.adjusted(22, (ROW_HEIGHT - 20) // 2, 0, 0)
+        circle.setSize(QSize(20, 20))
+        if selected:
+            painter.setBrush(accent)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(circle)
+            pen = QPen(QColor("white"), 2)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.drawLine(circle.left() + 5, circle.center().y() + 1,
+                             circle.center().x() - 1, circle.bottom() - 5)
+            painter.drawLine(circle.center().x() - 1, circle.bottom() - 5,
+                             circle.right() - 4, circle.top() + 6)
         else:
-            self.drafts_path = default_drafts_root() or (
-                Path.home()
-                / "Movies"
-                / "CapCut"
-                / "User Data"
-                / "Projects"
-                / "com.lveditor.draft"
-            )
-        self.output_dir = Path.home() / "CC Decrypter Exports"
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(muted, 1))
+            painter.drawEllipse(circle)
 
-        self._build_ui()
+        size_font = QFont(option.font)
+        size_font.setPointSizeF(option.font.pointSizeF() - 1)
+        painter.setFont(size_font)
+        size_text = human_size(video.size)
+        size_width = painter.fontMetrics().horizontalAdvance(size_text) + 12
+        painter.setPen(muted)
+        painter.drawText(
+            rect.adjusted(0, 0, -24, 0),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            size_text,
+        )
 
+        text_left = rect.left() + 58
+        text_width = max(40, rect.width() - 58 - 24 - size_width)
+
+        name_font = QFont(option.font)
+        name_font.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(name_font)
+        painter.setPen(text_color)
+        name_rect = rect.adjusted(0, 11, 0, 0)
+        name_rect.setLeft(text_left)
+        name_rect.setWidth(text_width)
+        name_rect.setHeight(18)
+        painter.drawText(
+            name_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            painter.fontMetrics().elidedText(
+                video.path.name, Qt.TextElideMode.ElideMiddle, text_width
+            ),
+        )
+
+        sub_font = QFont(option.font)
+        sub_font.setPointSizeF(option.font.pointSizeF() - 1.5)
+        painter.setFont(sub_font)
+        painter.setPen(muted)
+        parts = [part for part in (video.project_name, _created_label(video)) if part]
+        sub_rect = name_rect.translated(0, 19)
+        painter.drawText(
+            sub_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            painter.fontMetrics().elidedText(
+                " · ".join(parts) or "—", Qt.TextElideMode.ElideMiddle, text_width
+            ),
+        )
+
+        if not (selected or hovered):
+            line = QColor(text_color)
+            line.setAlpha(20)
+            painter.setPen(QPen(line, 1))
+            painter.drawLine(rect.left() + 22, rect.bottom(), rect.right() - 22, rect.bottom())
+        painter.restore()
+
+
+def _created_label(video: DraftVideo) -> str:
+    return f"Created {video.created_label}" if video.created_label else ""
+
+
+class LogWindow(QDialog):
+    def __init__(self, parent: QWidget, lines) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("CC Decrypter — Log")
+        self.resize(680, 460)
+        layout = QVBoxLayout(self)
+        self.text = QPlainTextEdit()
+        self.text.setReadOnly(True)
+        self.text.setFont(QFont("Menlo", 11))
+        self.text.setPlainText("\n".join(lines))
+        layout.addWidget(self.text)
+        self.scroll_to_end()
+
+    def append(self, message: str) -> None:
+        self.text.appendPlainText(message)
+        self.scroll_to_end()
+
+    def scroll_to_end(self) -> None:
+        bar = self.text.verticalScrollBar()
+        bar.setValue(bar.maximum())
+
+
+class DecrypterWindow(QWidget):
+    scan_done = Signal(object, object)
+    batch_done = Signal(int, int, int)
+    logged = Signal(str)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle("CC Decrypter")
+        self.resize(900, 780)
+        self.setMinimumSize(640, 560)
+
+        self.videos: list[DraftVideo] = []
+        self.busy = False
+        self.log_lines: deque[str] = deque(maxlen=1000)
+        self.log_window: LogWindow | None = None
+
+        self.sort_key, self.sort_descending = load_sort() or ("date", True)
+        self.theme = load_theme()
+        apply_color_scheme(self.theme)
+        self.drafts_path, missing = resolve_drafts_folder(load_drafts_folder())
+        self.output_dir = resolve_output_folder(load_output_folder())
+
+        self._build()
+        self.scan_done.connect(self._scan_finished)
+        self.batch_done.connect(self._batch_finished)
+        self.logged.connect(self._append_log)
+
+        if missing is not None:
+            self.write_log(f"Saved drafts folder is gone: {missing}")
+            QTimer.singleShot(0, lambda: self._report_missing_folder(missing))
         if self.drafts_path.is_dir():
-            self.start_scan()
+            QTimer.singleShot(0, self.start_scan)
         else:
-            self._set_status("working", "Drafts folder not found — click the path above to choose it.")
+            self._set_status("working", "Drafts folder not found — click Choose… to pick it.")
 
     # ------------------------------------------------------------------ UI
 
-    def _build_ui(self) -> None:
-        if getattr(self, "content", None) is not None:
-            self.content.destroy()
-        self.root.configure(bg=self.c["bg"])
+    def _build(self) -> None:
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        centre = QHBoxLayout()
+        centre.addStretch(1)
+        column = QVBoxLayout()
+        column.setContentsMargins(28, 26, 28, 20)
+        column.setSpacing(10)
+        holder = QWidget()
+        holder.setLayout(column)
+        holder.setMaximumWidth(CONTENT_WIDTH)
+        holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        # the column takes the width first; the stretches only mop up what is left
+        centre.addWidget(holder, 20)
+        centre.addStretch(1)
+        outer.addLayout(centre)
 
-        content = Frame(self.root, bg=self.c["bg"])
-        content.place(relx=0.5, anchor="n", y=0, width=CONTENT_WIDTH, relheight=1.0)
-        self.content = content
+        header = QHBoxLayout()
+        header.addStretch(1)
+        header.addLayout(self._build_theme_switch())
+        column.addLayout(header)
 
-        footer = Frame(content, bg=self.c["bg"])
-        footer.pack(side=BOTTOM, fill=X, pady=(0, 14))
-        Frame(content, bg=self.c["hairline"], height=1).pack(side=BOTTOM, fill=X)
+        title = QLabel("CC Decrypter")
+        title_font = title.font()
+        title_font.setPointSize(title_font.pointSize() + 9)
+        title_font.setBold(True)
+        title.setFont(title_font)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        column.addWidget(title)
 
-        main = Frame(content, bg=self.c["bg"])
-        main.pack(side=TOP, fill=BOTH, expand=True)
+        subtitle = QLabel("Videos from your CapCut drafts, decrypted into normal MP4 files.")
+        subtitle.setObjectName("subtitle")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        column.addWidget(subtitle)
 
-        intro = Frame(main, bg=self.c["bg"])
-        intro.pack(fill=X, pady=(26, 0))
-        Label(intro, text="CC Decrypter", font=self.f_title, fg=self.c["text"], bg=self.c["bg"]).pack()
-        Label(
-            intro,
-            text="Videos from your CapCut drafts, decrypted into normal MP4 files.",
-            font=self.f_sub,
-            fg=self.c["muted"],
-            bg=self.c["bg"],
-        ).pack(pady=(4, 0))
+        column.addSpacing(18)
+        column.addWidget(self._step_label("1 · DRAFTS FOLDER"))
+        column.addWidget(self._build_folder_row())
 
-        Label(
-            main,
-            text="1 · DRAFTS FOLDER",
-            font=self.f_step,
-            fg=self.c["muted"],
-            bg=self.c["bg"],
-            anchor="w",
-        ).pack(fill=X, pady=(22, 6))
-        self._build_folder_pill(main)
+        column.addSpacing(14)
+        list_header = QHBoxLayout()
+        list_header.addWidget(self._step_label("2 · PICK VIDEOS TO DECRYPT"))
+        list_header.addStretch(1)
+        list_header.addWidget(self._step_label("SORT"))
+        self.sort_buttons: dict[str, QToolButton] = {}
+        for label, key, _ in SORT_OPTIONS:
+            button = QToolButton()
+            button.setObjectName("sort")
+            button.setText(label)
+            button.clicked.connect(lambda _checked=False, key=key: self._on_sort(key))
+            list_header.addWidget(button)
+            self.sort_buttons[key] = button
+        column.addLayout(list_header)
 
-        Label(
-            main,
-            text="2 · PICK VIDEOS TO DECRYPT",
-            font=self.f_step,
-            fg=self.c["muted"],
-            bg=self.c["bg"],
-            anchor="w",
-        ).pack(fill=X, pady=(20, 6))
+        self.list = QListWidget()
+        self.list.setItemDelegate(VideoRow())
+        self.list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self.list.setUniformItemSizes(True)
+        self.list.setMouseTracking(True)
+        self.list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.list.setAlternatingRowColors(False)
+        self.list.setFrameShape(QFrame.Shape.NoFrame)
+        self.list.setSpacing(0)
+        self.list.itemSelectionChanged.connect(self._selection_changed)
+        column.addWidget(self.list, 1)
 
-        self.list_canvas = Canvas(
-            main,
-            width=CONTENT_WIDTH,
-            height=LIST_HEIGHT,
-            bg=self.c["bg"],
-            highlightthickness=1,
-            highlightbackground=self.c["hairline"],
-            yscrollincrement=1,
-        )
-        self.list_canvas.pack(fill=X)
-        self.list_canvas.bind("<Button-1>", self._on_list_click)
-        self.list_canvas.bind("<Double-Button-1>", self._on_list_double_click)
-        self.list_canvas.bind("<B1-Motion>", self._on_list_drag)
-        self.list_canvas.bind("<ButtonRelease-1>", self._on_list_release)
-        self.list_canvas.bind("<Configure>", lambda e: self._draw_scrollbar())
-        self._bind_scrolling()
+        column.addSpacing(6)
+        self.counts = QLabel()
+        self.counts.setObjectName("counts")
+        self.counts.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        column.addWidget(self.counts)
 
-        self.counts_label = Label(main, font=self.f_status, fg=self.c["muted"], bg=self.c["bg"])
-        self.counts_label.pack(pady=(14, 10))
+        self.cta = QPushButton()
+        self.cta.setObjectName("cta")
+        self.cta.setMinimumHeight(48)
+        self.cta.clicked.connect(self.start_batch)
+        column.addWidget(self.cta)
 
-        self.cta_canvas = Canvas(
-            main, width=CONTENT_WIDTH, height=46, bg=self.c["bg"], highlightthickness=0
-        )
-        self.cta_canvas.pack(fill=X)
-        self.cta_canvas.bind("<Button-1>", self._on_cta_click)
+        column.addSpacing(4)
+        saved_row = QHBoxLayout()
+        saved_row.setSpacing(6)
+        saved_row.addStretch(1)
+        saved_to = QLabel("Saved to")
+        saved_to.setObjectName("subtitle")
+        saved_row.addWidget(saved_to)
+        self.output_label = QLabel()
+        self.output_label.setFont(QFont("Menlo", 11))
+        saved_row.addWidget(self.output_label)
+        change = QToolButton()
+        change.setObjectName("link")
+        change.setText("Change…")
+        change.clicked.connect(self._on_change_output)
+        saved_row.addWidget(change)
+        saved_row.addStretch(1)
+        column.addLayout(saved_row)
 
-        saverow = Frame(main, bg=self.c["bg"])
-        saverow.pack(fill=X, pady=(10, 0))
-        inner = Frame(saverow, bg=self.c["bg"])
-        inner.pack()
-        Label(inner, text="Saved to", font=self.f_status, fg=self.c["muted"], bg=self.c["bg"]).pack(side=LEFT)
-        self.savelink = Label(
-            inner,
-            text=f"  {self._display_dir()}  ",
-            font=self.f_mono,
-            fg=self.c["body"],
-            bg=self.c["bg"],
-        )
-        self.savelink.pack(side=LEFT)
-        change = Label(
-            inner,
-            text="· Change…",
-            font=self.f_status,
-            fg=self.c["accent_text"],
-            bg=self.c["bg"],
-        )
-        change.pack(side=LEFT)
-        change.bind("<Button-1>", self._on_change_output)
-        self.savelink.bind("<Button-1>", self._on_change_output)
+        column.addSpacing(2)
+        footer = QHBoxLayout()
+        self.status = QLabel()
+        footer.addWidget(self.status)
+        footer.addStretch(1)
+        log_button = QToolButton()
+        log_button.setObjectName("link")
+        log_button.setText("View log")
+        log_button.clicked.connect(self.show_log)
+        footer.addWidget(log_button)
+        column.addLayout(footer)
 
-        status_row = Frame(footer, bg=self.c["bg"])
-        status_row.pack(side=LEFT)
-        self.status_dot = Canvas(
-            status_row, width=10, height=10, bg=self.c["bg"], highlightthickness=0
-        )
-        self.status_dot.pack(side=LEFT, padx=(2, 6))
-        self._status_dot_id = self.status_dot.create_oval(1, 1, 9, 9, fill=self.c["muted"], outline="")
-        self.status_label = Label(
-            status_row, text="", font=self.f_status, fg=self.c["muted"], bg=self.c["bg"]
-        )
-        self.status_label.pack(side=LEFT)
+        self.setStyleSheet(stylesheet(self.theme))
+        QGuiApplication.styleHints().colorSchemeChanged.connect(self._restyle)
+        self._update_output_label()
+        self._update_sort_buttons()
+        self._selection_changed()
+        self._set_status("neutral", "Starting…")
 
-        browse_link = Label(
-            footer,
-            text="Have a single file? Browse…",
-            font=self.f_status,
-            fg=self.c["muted"],
-            bg=self.c["bg"],
-        )
-        browse_link.pack(side=RIGHT)
-        browse_link.bind("<Button-1>", lambda e: self.show_single_file())
-        log_link = Label(
-            footer,
-            text="View log  ",
-            font=self.f_status,
-            fg=self.c["accent_text"],
-            bg=self.c["bg"],
-        )
-        log_link.pack(side=RIGHT)
-        log_link.bind("<Button-1>", lambda e: self.show_log())
+    def _step_label(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("step")
+        return label
 
-        self._draw_folder_pill()
-        self._draw_list()
-        self._update_counts()
-        self._update_cta()
-        self._apply_status()
-        # built last so it stacks above the packed frames it overlaps
-        self._build_theme_toggle(content)
+    def _build_theme_switch(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(0)
+        self.theme_buttons: dict[str, QToolButton] = {}
+        for theme, glyph, tip in (("light", "☀", "Light appearance"), ("dark", "☾", "Dark appearance")):
+            button = QToolButton()
+            button.setObjectName("segment")
+            button.setProperty("side", theme)
+            button.setText(glyph)
+            button.setCheckable(True)
+            button.setToolTip(tip)
+            button.setFixedSize(38, 28)
+            button.clicked.connect(lambda _checked=False, theme=theme: self._on_theme(theme))
+            row.addWidget(button)
+            self.theme_buttons[theme] = button
+        self._update_theme_buttons()
+        return row
 
-    def _build_theme_toggle(self, parent: Frame) -> None:
-        canvas = Canvas(
-            parent,
-            width=THEME_TOGGLE_WIDTH,
-            height=THEME_TOGGLE_HEIGHT,
-            bg=self.c["bg"],
-            highlightthickness=0,
-        )
-        canvas.place(x=CONTENT_WIDTH - THEME_TOGGLE_WIDTH, y=16)
-        self.toggle_canvas = canvas
-        canvas.bind("<Button-1>", self._on_toggle_theme)
-        self._draw_theme_toggle()
+    def _build_folder_row(self) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("pill")
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(14, 7, 8, 7)
+        row.setSpacing(4)
+        self.folder_label = ElidingPathLabel()
+        self.folder_label.setObjectName("path")
+        self.folder_label.setFont(QFont("Menlo", 11))
+        self.folder_label.setToolTip("Click to choose another folder")
+        self.folder_label.clicked.connect(self._on_choose_folder)
+        row.addWidget(self.folder_label, 1)
+        choose = QToolButton()
+        choose.setObjectName("link")
+        choose.setText("Choose…")
+        choose.clicked.connect(self._on_choose_folder)
+        row.addWidget(choose)
+        rescan = QToolButton()
+        rescan.setObjectName("link")
+        rescan.setText("Rescan")
+        rescan.clicked.connect(self.start_scan)
+        row.addWidget(rescan)
+        self._update_folder_label()
+        return frame
 
-    def _draw_theme_toggle(self) -> None:
-        """A two-segment control: a light half and a dark half, current one lit."""
-        canvas = self.toggle_canvas
-        canvas.delete("all")
-        width, height = THEME_TOGGLE_WIDTH, THEME_TOGGLE_HEIGHT
-        half = width / 2
-        light_side = self.theme == "light"
+    def _update_folder_label(self) -> None:
+        self.folder_label.setFullText(str(self.drafts_path))
 
-        self._round_rect(
-            canvas, 0.5, 0.5, width - 0.5, height - 0.5, height / 2,
-            fill=self.c["pill_bg"], outline=self.c["pill_border"],
-        )
-        knob_x1 = 2.0 if light_side else half
-        self._round_rect(
-            canvas, knob_x1, 2, knob_x1 + half - 2, height - 2, (height - 4) / 2,
-            fill=self.c["toggle_knob"], outline=self.c["pill_border"],
-        )
+    def _update_output_label(self) -> None:
+        try:
+            shown = str(Path("~") / self.output_dir.relative_to(Path.home()))
+        except ValueError:
+            shown = str(self.output_dir)
+        self.output_label.setText(shown)
+        self.output_label.setToolTip(str(self.output_dir))
 
-        self._draw_sun(canvas, half / 2 + 1, height / 2, self._segment_color(light_side))
-        self._draw_moon(
-            canvas, width - half / 2 - 1, height / 2,
-            self._segment_color(not light_side),
-            self.c["toggle_knob"] if not light_side else self.c["pill_bg"],
-        )
+    # --------------------------------------------------------------- list
 
-    def _segment_color(self, active: bool) -> str:
-        return self.c["text"] if active else self.c["faint"]
+    def _populate(self) -> None:
+        chosen = {video.path for video in self.selected_videos()}
+        self.list.blockSignals(True)
+        self.list.clear()
+        for video in sorted(
+            self.videos, key=SORT_KEYS[self.sort_key], reverse=self.sort_descending
+        ):
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, video)
+            item.setText(video.path.name)  # gives keyboard type-ahead for free
+            self.list.addItem(item)
+            if video.path in chosen:
+                item.setSelected(True)
+        self.list.blockSignals(False)
+        self._selection_changed()
 
-    def _draw_sun(self, canvas: Canvas, cx: float, cy: float, color: str) -> None:
-        canvas.create_oval(cx - 3.5, cy - 3.5, cx + 3.5, cy + 3.5, fill=color, outline="")
-        for step in range(8):
-            angle = step * math.pi / 4
-            dx = math.cos(angle)
-            dy = math.sin(angle)
-            canvas.create_line(
-                cx + 5.5 * dx, cy + 5.5 * dy, cx + 8 * dx, cy + 8 * dy,
-                fill=color, width=1,
+    def selected_videos(self) -> list[DraftVideo]:
+        return [item.data(Qt.ItemDataRole.UserRole) for item in self.list.selectedItems()]
+
+    def _selection_changed(self) -> None:
+        picked = self.selected_videos()
+        if self.videos:
+            total = sum(video.size for video in picked)
+            self.counts.setText(
+                f"{len(picked)} of {len(self.videos)} videos selected · {human_size(total)}"
             )
-
-    def _draw_moon(self, canvas: Canvas, cx: float, cy: float, color: str, behind: str) -> None:
-        canvas.create_oval(cx - 7, cy - 7, cx + 7, cy + 7, fill=color, outline="")
-        canvas.create_oval(cx - 2.5, cy - 9, cx + 11, cy + 5, fill=behind, outline="")
-
-    def _build_folder_pill(self, parent: Frame) -> None:
-        self.folder_canvas = Canvas(
-            parent, width=CONTENT_WIDTH, height=36, bg=self.c["bg"], highlightthickness=0
-        )
-        self.folder_canvas.pack(fill=X)
-        self.folder_canvas.tag_bind("pick", "<Button-1>", self._on_choose_folder)
-        self.folder_canvas.tag_bind("choose", "<Button-1>", self._on_choose_folder)
-        self.folder_canvas.tag_bind("rescan", "<Button-1>", lambda e: self.start_scan())
-
-    def _draw_folder_pill(self) -> None:
-        canvas = self.folder_canvas
-        canvas.delete("all")
-        self._round_rect(
-            canvas, 1, 1, CONTENT_WIDTH - 1, 35, 18,
-            fill=self.c["pill_bg"], outline=self.c["pill_border"], tags=("pick",),
-        )
-        canvas.create_text(20, 18, text="📁", font=self.f_small, tags=("pick",))
-        self._folder_text_id = canvas.create_text(
-            42, 18, anchor="w", text="", font=self.f_mono, fill=self.c["body"], tags=("pick",)
-        )
-        canvas.create_rectangle(
-            CONTENT_WIDTH - 168, 4, CONTENT_WIDTH - 100, 32,
-            fill=self.c["pill_bg"], outline="", tags=("choose",),
-        )
-        canvas.create_text(
-            CONTENT_WIDTH - 106, 18, anchor="e", text="Choose…",
-            font=self.f_small_bold, fill=self.c["accent_text"], tags=("choose",),
-        )
-        canvas.create_rectangle(
-            CONTENT_WIDTH - 92, 4, CONTENT_WIDTH - 10, 32,
-            fill=self.c["pill_bg"], outline="", tags=("rescan",),
-        )
-        canvas.create_text(
-            CONTENT_WIDTH - 14, 18, anchor="e", text="Rescan",
-            font=self.f_small_bold, fill=self.c["accent_text"], tags=("rescan",),
-        )
-        self._update_folder_pill()
-
-    def _round_rect(self, canvas: Canvas, x1, y1, x2, y2, r, **kwargs) -> int:
-        points = [
-            x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r,
-            x2, y2 - r, x2, y2, x2 - r, y2, x1 + r, y2,
-            x1, y2, x1, y2 - r, x1, y1 + r, x1, y1,
-        ]
-        return canvas.create_polygon(points, smooth=True, **kwargs)
-
-    def _fit_text(self, text: str, font: tkfont.Font, max_px: int) -> str:
-        if font.measure(text) <= max_px:
-            return text
-        while text and font.measure(text + "…") > max_px:
-            text = text[:-1]
-        return text + "…"
-
-    def _fit_middle(self, text: str, font: tkfont.Font, max_px: int) -> str:
-        if font.measure(text) <= max_px:
-            return text
-        head, tail = text, ""
-        while head and font.measure(head + "…" + tail) > max_px:
-            if len(head) > len(tail):
-                head = head[:-1]
-            else:
-                tail = tail[1:]
-        return head + "…" + tail
-
-    # --------------------------------------------------------- list drawing
-
-    def _update_folder_pill(self) -> None:
-        path_text = str(self.drafts_path)
-        self.folder_canvas.itemconfigure(
-            self._folder_text_id, text=self._fit_middle(path_text, self.f_mono, 460)
-        )
-
-    def _draw_list(self) -> None:
-        canvas = self.list_canvas
-        canvas.delete("all")
-        if not self._results:
-            canvas.create_text(
-                CONTENT_WIDTH / 2, LIST_HEIGHT / 2 - 10,
-                text="No protected videos found.", font=self.f_name, fill=self.c["muted"],
-            )
-            canvas.create_text(
-                CONTENT_WIDTH / 2, LIST_HEIGHT / 2 + 14,
-                text="Pick your CapCut drafts folder above, then click Rescan.",
-                font=self.f_small, fill=self.c["faint"],
-            )
-            canvas.configure(scrollregion=(0, 0, CONTENT_WIDTH, LIST_HEIGHT))
-            return
-
-        for index, video in enumerate(self._results):
-            top = index * ROW_HEIGHT
-            middle = top + ROW_HEIGHT / 2
-            selected = index in self._selected
-            canvas.create_oval(
-                14, middle - 9, 32, middle + 9,
-                outline=self.c["accent"] if selected else self.c["check_border"],
-                fill=self.c["accent"] if selected else self.c["check_fill"],
-                width=1,
-            )
-            if selected:
-                canvas.create_text(
-                    23, middle - 1, text="✓", fill="white", font=self.f_check
-                )
-            canvas.create_text(
-                46, middle - 11, anchor="w",
-                text=self._fit_text(video.path.name, self.f_name, 450),
-                font=self.f_name, fill=self.c["text"],
-            )
-            canvas.create_text(
-                46, middle + 9, anchor="w",
-                text=self._fit_text(self._row_sublabel(video), self.f_small, 460),
-                font=self.f_small, fill=self.c["muted"],
-            )
-            canvas.create_text(
-                CONTENT_WIDTH - 14, middle, anchor="e",
-                text=human_size(video.size), font=self.f_small, fill=self.c["muted"],
-            )
-            if index < len(self._results) - 1:
-                canvas.create_line(
-                    1, top + ROW_HEIGHT, CONTENT_WIDTH - 1, top + ROW_HEIGHT,
-                    fill=self.c["row_line"],
-                )
-
-        total_height = len(self._results) * ROW_HEIGHT
-        canvas.configure(scrollregion=(0, 0, CONTENT_WIDTH, total_height))
-        self._draw_scrollbar()
-
-    def _row_sublabel(self, video: DraftVideo) -> str:
-        parts = []
-        if video.project_name:
-            parts.append(video.project_name)
-        if video.created_label:
-            parts.append(f"Created {video.created_label}")
-        return " · ".join(parts) if parts else "—"
-
-    def _row_at(self, y_canvas: float) -> int | None:
-        index = int(y_canvas // ROW_HEIGHT)
-        if 0 <= index < len(self._results):
-            return index
-        return None
-
-    def _on_list_click(self, event) -> None:
-        if self._on_scrollbar_press(event):
-            return
-        if self._busy:
-            return
-        index = self._row_at(self.list_canvas.canvasy(event.y))
-        if index is None:
-            return
-        if index in self._selected:
-            self._selected.discard(index)
         else:
-            self._selected.add(index)
-        self._draw_list()
-        self._update_counts()
-        self._update_cta()
+            self.counts.setText("Nothing to decrypt yet.")
 
-    def _on_list_double_click(self, event) -> None:
-        if self._thumb_drag is not None or self._on_scrollbar_press(event):
-            return
-        index = self._row_at(self.list_canvas.canvasy(event.y))
-        if index is None or not self._results[index].decryptable:
-            return
-        self.show_single_file(preset=str(self._results[index].path))
-
-    # ------------------------------------------------------------ scrolling
-
-    def _bind_scrolling(self) -> None:
-        """Route scrolling for the whole window to the video list.
-
-        Tk hands a wheel event to the widget under the pointer, so binding only
-        the list canvas meant the wheel did nothing whenever the pointer sat
-        anywhere else in the window. Binding the toplevel catches those events
-        as well, because every child widget carries the toplevel in its bind
-        tags. The log and single-file windows are separate toplevels, so their
-        own scrolling is untouched.
-        """
-        page = max(1, LIST_HEIGHT // SCROLL_UNIT - 1)
-        self.root.bind("<MouseWheel>", self._on_list_wheel)
-        self.root.bind("<Button-4>", lambda e: self._scroll_list(-3))
-        self.root.bind("<Button-5>", lambda e: self._scroll_list(3))
-        self.root.bind("<Up>", lambda e: self._scroll_list(-1))
-        self.root.bind("<Down>", lambda e: self._scroll_list(1))
-        self.root.bind("<Prior>", lambda e: self._scroll_list(-page))
-        self.root.bind("<Next>", lambda e: self._scroll_list(page))
-        self.root.bind("<Home>", lambda e: self._scroll_list_to_top())
-        self.root.bind("<End>", lambda e: self._scroll_list_to_pixel(self._max_scroll()))
-
-    def _on_list_wheel(self, event) -> None:
-        delta = event.delta
-        if not delta:
-            return
-        if abs(delta) >= 120:
-            steps = -int(delta / 120)
+        if self.busy:
+            self.cta.setEnabled(False)
+            self.cta.setText("Working…")
+        elif picked:
+            self.cta.setEnabled(True)
+            self.cta.setText(f"Decrypt {len(picked)} video{'s' if len(picked) != 1 else ''}")
         else:
-            steps = -1 if delta > 0 else 1
-        self._scroll_list(steps)
+            self.cta.setEnabled(False)
+            self.cta.setText("Select videos to decrypt")
 
-    def _scroll_list(self, steps: int) -> None:
-        self._scroll_list_by(steps * SCROLL_UNIT)
+    # --------------------------------------------------------------- sort
 
-    def _scroll_list_by(self, pixels: float) -> None:
-        self._scroll_list_to_pixel(self._list_top() + pixels)
-
-    def _scroll_list_to_pixel(self, top: float) -> None:
-        """Show the list starting `top` pixels down, clamped to the last row."""
-        target = int(min(max(top, 0.0), self._max_scroll()))
-        delta = target - self._list_top()
-        if delta:
-            self.list_canvas.yview_scroll(delta, "units")
-        self._draw_scrollbar()
-
-    def _scroll_list_to_top(self) -> None:
-        self._scroll_list_to_pixel(0.0)
-
-    def _list_top(self) -> int:
-        """First list pixel currently on screen (canvasy(0) sits on the border)."""
-        return int(self.list_canvas.canvasy(LIST_BORDER))
-
-    def _list_view_height(self) -> int:
-        height = self.list_canvas.winfo_height()
-        if height <= 1:
-            height = LIST_HEIGHT + 2 * LIST_BORDER
-        return height - 2 * LIST_BORDER
-
-    def _max_scroll(self) -> float:
-        return max(0.0, len(self._results) * ROW_HEIGHT - self._list_view_height())
-
-    def _thumb_geometry(self) -> tuple[float, float, float] | None:
-        """Return (track_top, thumb_top, thumb_height) in widget coordinates.
-
-        None means the rows all fit and no scrollbar is needed.
-        """
-        limit = self._max_scroll()
-        if limit <= 0:
-            return None
-        view = self._list_view_height()
-        track_top = float(SCROLLBAR_INSET)
-        track_height = view - 2 * SCROLLBAR_INSET
-        thumb_height = max(MIN_THUMB_HEIGHT, track_height * view / (view + limit))
-        travel = max(0.0, track_height - thumb_height)
-        progress = min(max(self._list_top() / limit, 0.0), 1.0)
-        return track_top, track_top + travel * progress, thumb_height
-
-    def _draw_scrollbar(self) -> None:
-        canvas = self.list_canvas
-        canvas.delete("scrollbar")
-        geometry = self._thumb_geometry()
-        if geometry is None:
-            return
-        track_top, thumb_top, thumb_height = geometry
-        offset = self._list_top()
-        x2 = CONTENT_WIDTH - SCROLLBAR_INSET
-        x1 = x2 - SCROLLBAR_WIDTH
-        radius = SCROLLBAR_WIDTH / 2
-        track_bottom = self._list_view_height() - SCROLLBAR_INSET
-        self._round_rect(
-            canvas, x1, offset + track_top, x2, offset + track_bottom, radius,
-            fill=self.c["scroll_track"], outline="", tags=("scrollbar",),
-        )
-        self._round_rect(
-            canvas, x1, offset + thumb_top, x2, offset + thumb_top + thumb_height, radius,
-            fill=self.c["scroll_thumb"], outline="", tags=("scrollbar",),
-        )
-
-    def _on_scrollbar_press(self, event) -> bool:
-        """Handle a click in the scrollbar column; True if the list should not select."""
-        self._thumb_drag = None
-        if event.x < CONTENT_WIDTH - SCROLLBAR_INSET - SCROLLBAR_WIDTH - 4:
-            return False
-        geometry = self._thumb_geometry()
-        if geometry is None:
-            return False
-        _, thumb_top, thumb_height = geometry
-        if thumb_top <= event.y <= thumb_top + thumb_height:
-            self._thumb_drag = (event.y, self._list_top())
+    def _on_sort(self, key: str) -> None:
+        if key == self.sort_key:
+            self.sort_descending = not self.sort_descending
         else:
-            page = max(1, LIST_HEIGHT // SCROLL_UNIT - 1)
-            self._scroll_list(-page if event.y < thumb_top else page)
-        return True
+            self.sort_key = key
+            self.sort_descending = next(
+                default for _, option, default in SORT_OPTIONS if option == key
+            )
+        save_sort(self.sort_key, self.sort_descending)
+        self._update_sort_buttons()
+        self._populate()
+        self.list.scrollToTop()
 
-    def _on_list_drag(self, event) -> None:
-        if self._thumb_drag is None:
-            return
-        start_y, start_top = self._thumb_drag
-        geometry = self._thumb_geometry()
-        if geometry is None:
-            return
-        track_top, _, thumb_height = geometry
-        travel = self._list_view_height() - 2 * track_top - thumb_height
-        if travel <= 0:
-            return
-        self._scroll_list_to_pixel(start_top + (event.y - start_y) / travel * self._max_scroll())
+    def _update_sort_buttons(self) -> None:
+        for label, key, _ in SORT_OPTIONS:
+            active = key == self.sort_key
+            arrow = ("▾" if self.sort_descending else "▴") if active else ""
+            button = self.sort_buttons[key]
+            button.setText(f"{label} {arrow}".strip())
+            button.setProperty("active", "true" if active else "false")
+            button.style().unpolish(button)
+            button.style().polish(button)
 
-    def _on_list_release(self, event) -> None:
-        self._thumb_drag = None
+    # -------------------------------------------------------------- theme
 
-    def _update_counts(self) -> None:
-        if not self._results:
-            self.counts_label.config(text="Nothing to decrypt yet.")
-            return
-        count = len(self._selected)
-        total = sum(self._results[i].size for i in self._selected)
-        self.counts_label.config(
-            text=f"{count} of {len(self._results)} videos selected · {human_size(total)}"
-        )
-
-    # ------------------------------------------------------------------ CTA
-
-    def _update_cta(self) -> None:
-        canvas = self.cta_canvas
-        canvas.delete("all")
-        count = len(self._selected)
-
-        if self._busy:
-            fill = self.c["disabled_fill"]
-            text_color = self.c["disabled_text"]
-            label = "Working…"
-        elif count == 0:
-            fill = self.c["disabled_fill"]
-            text_color = self.c["disabled_text"]
-            label = "Select videos to decrypt"
-        else:
-            fill = self.c["accent"]
-            text_color = "white"
-            label = f"Decrypt {count} video{'s' if count != 1 else ''}"
-
-        self._round_rect(canvas, 1, 1, CONTENT_WIDTH - 1, 45, 23, fill=fill, outline="", tags=("cta",))
-        self._cta_text_id = canvas.create_text(
-            CONTENT_WIDTH / 2, 23, text=label, font=self.f_cta, fill=text_color, tags=("cta",)
-        )
-
-    def _on_cta_click(self, _event) -> None:
-        if self._busy or not self._selected:
-            return
-        self.start_batch()
-
-    def _set_busy(self, busy: bool) -> None:
-        self._busy = busy
-        self._update_cta()
-
-    # -------------------------------------------------------------- status
-
-    def _set_status(self, kind: str, message: str) -> None:
-        self._status = (kind, message)
-        self._apply_status()
-
-    def _apply_status(self) -> None:
-        kind, message = self._status
-        color = {"ok": GREEN, "working": AMBER, "error": RED}.get(kind, self.c["muted"])
-        self.status_dot.itemconfigure(self._status_dot_id, fill=color)
-        self.status_label.config(text=message)
-
-    # ---------------------------------------------------------------- theme
-
-    def _on_toggle_theme(self, event) -> None:
-        theme = "light" if event.x < THEME_TOGGLE_WIDTH / 2 else "dark"
+    def _on_theme(self, theme: str) -> None:
         if theme == self.theme:
+            self._update_theme_buttons()
             return
         self.theme = theme
-        save_theme(self.theme)
-        self._apply_theme()
+        save_theme(theme)
+        apply_color_scheme(theme)
+        self._restyle()
 
-    def _apply_theme(self) -> None:
-        self.c = DARK if self.theme == "dark" else LIGHT
-        windows = []
-        if self._log_window is not None and self._log_window.winfo_exists():
-            windows.append(self.show_log)
-            self._close_log()
-        if self._single_window is not None and self._single_window.winfo_exists():
-            windows.append(self.show_single_file)
-            self._close_single()
+    def _restyle(self, *_args) -> None:
+        self.setStyleSheet(stylesheet(self.theme))
+        self._update_theme_buttons()
+        self._update_sort_buttons()
+        self.list.viewport().update()
 
-        self._build_ui()
+    def _update_theme_buttons(self) -> None:
+        current = self.theme or current_color_scheme()
+        for theme, button in self.theme_buttons.items():
+            button.setChecked(theme == current)
 
-        for reopen in windows:
-            reopen()
+    # ------------------------------------------------------------ actions
 
-    # ------------------------------------------------------------- actions
+    def _report_missing_folder(self, missing: Path) -> None:
+        if self.drafts_path.is_dir():
+            detail = f"CC Decrypter is using this folder instead:\n{self.drafts_path}"
+        else:
+            detail = "Click Choose… at the top to pick the folder to scan."
+        QMessageBox.information(
+            self,
+            "Saved drafts folder not found",
+            f"The folder you picked last time is no longer there:\n{missing}\n\n{detail}",
+        )
 
-    def _on_choose_folder(self, _event) -> None:
-        path = filedialog.askdirectory(title="Choose your CapCut drafts folder")
+    def _on_choose_folder(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Choose your CapCut drafts folder", str(self.drafts_path)
+        )
         if not path:
             return
         self.drafts_path = Path(path)
         save_drafts_folder(self.drafts_path)
-        self._update_folder_pill()
+        self._update_folder_label()
         self.start_scan()
 
-    def _on_change_output(self, _event) -> None:
-        path = filedialog.askdirectory(title="Choose where decrypted copies are saved")
+    def _on_change_output(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Choose where decrypted copies are saved", str(self.output_dir)
+        )
         if not path:
             return
         self.output_dir = Path(path)
-        self.savelink.config(text=f"  {self._display_dir()}  ")
+        save_output_folder(self.output_dir)
+        self._update_output_label()
 
-    def _display_dir(self) -> str:
-        home = Path.home()
-        try:
-            return "~/" + str(self.output_dir.relative_to(home))
-        except ValueError:
-            return str(self.output_dir)
+    def _set_busy(self, busy: bool) -> None:
+        self.busy = busy
+        self._selection_changed()
+
+    def _set_status(self, kind: str, message: str) -> None:
+        color = {"ok": GREEN, "working": AMBER, "error": RED}.get(kind, GREY)
+        self.status.setText(f'<span style="color:{color}">●</span> {message}')
+
+    # --------------------------------------------------------------- scan
 
     def start_scan(self) -> None:
-        if self._busy:
+        if self.busy:
             return
         if not self.drafts_path.is_dir():
-            messagebox.showerror(
-                "Draft folder not found", f"Could not find the folder:\n{self.drafts_path}"
+            QMessageBox.critical(
+                self, "Drafts folder not found", f"Could not find the folder:\n{self.drafts_path}"
             )
             return
         self._set_busy(True)
-        self._results = []
-        self._selected.clear()
-        self._draw_list()
-        self._update_counts()
-        self._scroll_list_to_top()
+        self.videos = []
+        self._populate()
         self._set_status("working", "Searching your CapCut drafts folder…")
         self.write_log(f"Searching {self.drafts_path} …")
-        threading.Thread(target=self._scan_worker, daemon=True).start()
+        threading.Thread(target=self._scan_worker, args=(self.drafts_path,), daemon=True).start()
 
-    def _scan_worker(self) -> None:
+    def _scan_worker(self, folder: Path) -> None:
         try:
-            results = find_protected_videos(self.drafts_path)
-            error = None
+            self.scan_done.emit(find_protected_videos(folder), None)
         except Exception as exc:  # keep the UI usable no matter what
-            results = None
-            error = exc
-        self.root.after(0, self._scan_finished, results, error)
+            self.scan_done.emit(None, exc)
 
-    def _scan_finished(self, results: list[DraftVideo] | None, error: Exception | None) -> None:
+    def _scan_finished(self, results, error) -> None:
         self._set_busy(False)
         if error is not None or results is None:
             self._set_status("error", "Something went wrong while searching — see the log.")
             self.write_log(f"ERROR while searching: {error}")
             return
 
-        self._results = [video for video in results if video.decryptable]
-        unsupported = len(results) - len(self._results)
-        self._selected.clear()
-        self._scroll_list_to_top()
-        self._draw_list()
-        self._update_counts()
-        self._update_cta()
+        self.videos = [video for video in results if video.decryptable]
+        unsupported = len(results) - len(self.videos)
+        self._populate()
+        self.list.scrollToTop()
 
-        if self._results:
-            self._set_status(
-                "ok", f"Found {len(self._results)} videos — click the ones to decrypt."
-            )
-            self.write_log(f"Found {len(self._results)} video(s) you can decrypt.")
+        if self.videos:
+            self._set_status("ok", f"Found {len(self.videos)} videos — click the ones to decrypt.")
+            self.write_log(f"Found {len(self.videos)} video(s) you can decrypt.")
         else:
             self._set_status("neutral", "No protected videos were found in this folder.")
             self.write_log("No protected videos were found in this folder.")
@@ -816,14 +725,16 @@ class DecrypterApp:
                 f"{unsupported} protected file(s) use an unsupported format and are not shown."
             )
 
+    # -------------------------------------------------------------- batch
+
     def start_batch(self) -> None:
-        if self._busy or not self._selected:
+        videos = self.selected_videos()
+        if self.busy or not videos:
             return
-        videos = [self._results[i] for i in sorted(self._selected)]
         try:
             self.output_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            messagebox.showerror("Could not create output folder", str(exc), parent=self.root)
+            QMessageBox.critical(self, "Could not create output folder", str(exc))
             return
 
         self._set_busy(True)
@@ -835,8 +746,7 @@ class DecrypterApp:
 
     def _batch_worker(self, videos: list[DraftVideo], output_dir: Path) -> None:
         taken: set[str] = set()
-        done = 0
-        failed = 0
+        done = failed = 0
         for video in videos:
             self.write_log(f"Decrypting: {video.path.name}")
             try:
@@ -847,209 +757,108 @@ class DecrypterApp:
             except (DecodeError, OSError, ValueError) as exc:
                 failed += 1
                 self.write_log(f"ERROR: {video.path.name}: {exc}")
-
-        self.root.after(0, self._batch_finished, done, failed, len(videos))
+        self.batch_done.emit(done, failed, len(videos))
 
     def _batch_finished(self, done: int, failed: int, total: int) -> None:
         self._set_busy(False)
         if failed:
             self._set_status("error", f"Last run: {done} decrypted · {failed} failed.")
-            messagebox.showerror(
+            QMessageBox.critical(
+                self,
                 "Some videos failed",
                 f"Finished: {done} of {total} video(s) decrypted, {failed} failed.\n"
                 "See View log for details.",
-                parent=self.root,
             )
         else:
             self._set_status("ok", f"Last run: {done} decrypted · 0 failed.")
             if done:
-                messagebox.showinfo(
+                QMessageBox.information(
+                    self,
                     "Done",
-                    f"Decrypted {done} video(s).\nSaved to: {self._display_dir()}",
-                    parent=self.root,
+                    f"Decrypted {done} video(s).\nSaved to: {self.output_label.text()}",
                 )
 
-    # ------------------------------------------------------------ logging
+    # ----------------------------------------------------------- logging
 
     def write_log(self, message: str) -> None:
-        if threading.current_thread() is not threading.main_thread():
-            self.root.after(0, self.write_log, message)
-            return
+        self.logged.emit(message)
 
-        self._log_buffer.append(message)
-        if self._log_text is not None:
-            try:
-                self._log_text.insert(END, message + ("\n" if not message.endswith("\n") else ""))
-                self._log_text.see(END)
-            except Exception:
-                pass
+    def _append_log(self, message: str) -> None:
+        self.log_lines.append(message)
+        if self.log_window is not None and self.log_window.isVisible():
+            self.log_window.append(message)
 
     def show_log(self) -> None:
-        if self._log_window is not None and self._log_window.winfo_exists():
-            self._log_window.lift()
-            self._log_window.focus()
-            return
+        if self.log_window is None:
+            self.log_window = LogWindow(self, self.log_lines)
+        else:
+            self.log_window.text.setPlainText("\n".join(self.log_lines))
+            self.log_window.scroll_to_end()
+        self.log_window.show()
+        self.log_window.raise_()
+        self.log_window.activateWindow()
 
-        window = Toplevel(self.root)
-        window.title("CC Decrypter — Log")
-        window.geometry("640x440")
-        window.configure(bg=self.c["bg"])
-        text = scrolledtext.ScrolledText(
-            window, font=self.f_mono, bg=self.c["entry_bg"], fg=self.c["body"],
-            insertbackground=self.c["text"],
+
+def build_palette(theme: str) -> QPalette:
+    """A full palette for a pinned theme, so the look does not depend on the
+    platform honouring the colour-scheme hint."""
+    t = tokens(theme)
+    palette = QPalette()
+    window = QColor(t["window"])
+    base = QColor(t["list_bg"])
+    text = QColor(t["text"])
+    for role, colour in (
+        (QPalette.ColorRole.Window, window),
+        (QPalette.ColorRole.WindowText, text),
+        (QPalette.ColorRole.Base, base),
+        (QPalette.ColorRole.AlternateBase, QColor(t["surface"])),
+        (QPalette.ColorRole.Text, text),
+        (QPalette.ColorRole.Button, QColor(t["surface"])),
+        (QPalette.ColorRole.ButtonText, text),
+        (QPalette.ColorRole.ToolTipBase, base),
+        (QPalette.ColorRole.ToolTipText, text),
+        (QPalette.ColorRole.PlaceholderText, QColor(GREY)),
+        (QPalette.ColorRole.Mid, QColor(GREY)),
+        (QPalette.ColorRole.Highlight, QColor(t["accent"])),
+        (QPalette.ColorRole.HighlightedText, QColor("white")),
+    ):
+        palette.setColor(role, colour)
+    palette.setColor(
+        QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(t["disabled_fg"])
+    )
+    palette.setColor(
+        QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(t["disabled_fg"])
+    )
+    return palette
+
+
+def apply_color_scheme(theme: str | None) -> None:
+    """Force light or dark, or follow the system when theme is None."""
+    hints = QGuiApplication.styleHints()
+    if hasattr(hints, "setColorScheme"):
+        hints.setColorScheme(
+            {
+                "light": Qt.ColorScheme.Light,
+                "dark": Qt.ColorScheme.Dark,
+            }.get(theme, Qt.ColorScheme.Unknown)
         )
-        text.pack(fill=BOTH, expand=True, padx=10, pady=10)
-        for line in self._log_buffer:
-            text.insert(END, line + "\n")
-        text.see(END)
+    app = QApplication.instance()
+    if app is None:
+        return
+    app.setPalette(build_palette(theme) if theme else app.style().standardPalette())
 
-        self._log_window = window
-        self._log_text = text
-        window.protocol("WM_DELETE_WINDOW", self._close_log)
 
-    def _close_log(self) -> None:
-        if self._log_window is not None:
-            self._log_window.destroy()
-        self._log_window = None
-        self._log_text = None
-
-    # -------------------------------------------------------- single file
-
-    def set_single_input(self, path: str) -> None:
-        self.input_var.set(path)
-        if not self.output_var.get().strip():
-            input_path = Path(path)
-            self.output_var.set(str(input_path.with_name(input_path.stem + "_decoded.mp4")))
-
-    def show_single_file(self, preset: str | None = None) -> None:
-        if self._single_window is not None and self._single_window.winfo_exists():
-            if preset:
-                self.set_single_input(preset)
-            self._single_window.lift()
-            self._single_window.focus()
-            return
-
-        window = Toplevel(self.root)
-        window.title("Single file — CC Decrypter")
-        window.configure(bg=self.c["bg"])
-        window.resizable(False, False)
-        outer = Frame(window, bg=self.c["bg"], padx=16, pady=14)
-        outer.pack(fill=BOTH, expand=True)
-
-        for label_text, variable, command in (
-            ("Input file", self.input_var, lambda: self._pick_single_file()),
-            ("Output file", self.output_var, lambda: self._pick_single_output()),
-        ):
-            row = Frame(outer, bg=self.c["bg"])
-            row.pack(fill=X, pady=4)
-            Label(
-                row, text=label_text, width=11, anchor="w",
-                bg=self.c["bg"], fg=self.c["body"],
-            ).pack(side=LEFT)
-            Entry(
-                row, textvariable=variable, width=58, relief="flat",
-                highlightthickness=1, highlightbackground=self.c["hairline"],
-                highlightcolor=self.c["accent"], bg=self.c["entry_bg"],
-                fg=self.c["text"], insertbackground=self.c["text"],
-            ).pack(side=LEFT, padx=(0, 8))
-            Button(
-                row, text="Browse", command=command, relief="flat",
-                bg=self.c["pill_bg"], fg=self.c["body"],
-                activebackground=self.c["pill_border"], activeforeground=self.c["text"],
-                padx=10,
-            ).pack(side=RIGHT)
-
-        actions = Frame(outer, bg=self.c["bg"])
-        actions.pack(fill=X, pady=(10, 8))
-        decode_button = Button(
-            actions, text="Decode", command=self._start_single_decode, relief="flat",
-            bg=self.c["accent"], fg="white",
-            activebackground=self.c["accent_active"], activeforeground="white",
-            font=self.f_small_bold, padx=18, pady=5,
-        )
-        decode_button.pack(side=RIGHT)
-
-        log_text = scrolledtext.ScrolledText(
-            outer, height=12, width=74, font=self.f_mono,
-            bg=self.c["entry_bg"], fg=self.c["body"], insertbackground=self.c["text"],
-        )
-        log_text.pack(fill=BOTH, expand=True)
-
-        self._single_window = window
-        self._single_log = log_text
-        self._single_button = decode_button
-        window.protocol("WM_DELETE_WINDOW", self._close_single)
-        if preset:
-            self.set_single_input(preset)
-
-    def _close_single(self) -> None:
-        if self._single_window is not None:
-            self._single_window.destroy()
-        self._single_window = None
-        self._single_log = None
-        self._single_button = None
-
-    def _pick_single_file(self) -> None:
-        path = filedialog.askopenfilename(
-            title="Choose protected video resource",
-            filetypes=(("MP4 files", "*.mp4"), ("All files", "*.*")),
-        )
-        if path:
-            self.set_single_input(path)
-
-    def _pick_single_output(self) -> None:
-        initial = self.output_var.get().strip()
-        path = filedialog.asksaveasfilename(
-            title="Save decoded MP4 as",
-            initialfile=Path(initial).name if initial else "decoded.mp4",
-            defaultextension=".mp4",
-            filetypes=(("MP4 files", "*.mp4"), ("All files", "*.*")),
-        )
-        if path:
-            self.output_var.set(path)
-
-    def _single_log_write(self, message: str) -> None:
-        if self._single_log is None:
-            return
-        try:
-            if not self._single_log.winfo_exists():
-                return
-            self._single_log.insert(END, message + ("\n" if not message.endswith("\n") else ""))
-            self._single_log.see(END)
-        except Exception:
-            pass
-
-    def _start_single_decode(self) -> None:
-        input_path = Path(self.input_var.get().strip())
-        output_path = Path(self.output_var.get().strip())
-        button = self._single_button
-        if button is not None:
-            button.config(state="disabled")
-
-        def logger(message: str) -> None:
-            self.write_log(message)
-            self._single_log_write(message)
-
-        def worker() -> None:
-            try:
-                decode_file(input_path, output_path, logger)
-                logger("Done.")
-            except (DecodeError, OSError, ValueError) as exc:
-                logger(f"ERROR: {exc}")
-                self.root.after(
-                    0, lambda: messagebox.showerror("Decode failed", str(exc), parent=self.root)
-                )
-            finally:
-                def reenable() -> None:
-                    if button is not None and button.winfo_exists():
-                        button.config(state="normal")
-
-                self.root.after(0, reenable)
-
-        threading.Thread(target=worker, daemon=True).start()
+def current_color_scheme() -> str:
+    hints = QGuiApplication.styleHints()
+    scheme = getattr(hints, "colorScheme", None)
+    if scheme is None:
+        return "light"
+    return "dark" if scheme() == Qt.ColorScheme.Dark else "light"
 
 
 def main() -> None:
-    root = Tk()
-    DecrypterApp(root)
-    root.mainloop()
+    app = QApplication.instance() or QApplication([])
+    app.setApplicationName("CC Decrypter")
+    window = DecrypterWindow()
+    window.show()
+    app.exec()

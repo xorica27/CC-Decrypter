@@ -19,8 +19,8 @@ Download the latest version from the GitHub Releases page.
 
 Choose the file that matches your computer:
 
-- Apple Silicon Mac: for M1, M2, M3, or newer Macs.
-- Intel Mac: for older Intel-based Macs.
+- Apple Silicon Mac: for M1, M2, M3, or newer Macs. Needs macOS 12 or newer.
+- Intel Mac: for older Intel-based Macs. Needs macOS 12 or newer.
 - Windows: for Windows 64-bit PCs.
 
 The app is currently unsigned, so your computer may show a warning the first
@@ -34,7 +34,8 @@ time you open it.
    like.
 3. Click the big "Decrypt N videos" button.
 4. Decrypted copies are saved to your CC Decrypter Exports folder. Click
-   Change… to pick a different folder.
+   Change… to pick a different folder — CC Decrypter remembers it for next
+   time.
 5. Open the new MP4 files in QuickTime, VLC, Premiere, Resolve, or another
    video app.
 
@@ -42,14 +43,19 @@ Handy extras:
 
 - Each video in the list shows the project it belongs to and the date it was
   created.
-- More videos than fit? Scroll the list with your mouse wheel or trackpad, drag
-  the scrollbar on the right, or use the arrow and Page Up/Down keys.
+- Newest videos come first. Click Date, Name, or Size above the list to sort by
+  that instead, and click the same one again to flip the order. CC Decrypter
+  remembers how you like it sorted.
+- More videos than fit? Scroll with your mouse wheel or trackpad, drag the
+  scrollbar, use the arrow keys, Page Up/Down or Home/End, or start typing a
+  filename to jump to it.
 - Not the right folder? Click Choose… (or the folder path itself) at the top
-  to pick another one — CC Decrypter remembers your choice for next time.
+  to pick another one — CC Decrypter remembers your choice for next time. If
+  that folder later disappears, the app says so instead of quietly scanning
+  somewhere else.
 - Prefer dark? Use the sun/moon switch at the top right — click the sun for
   light, the moon for dark. CC Decrypter follows your system appearance the
   first time you open it, then remembers your choice.
-- Have a single file? Click "Have a single file? Browse…" at the bottom.
 - Click "View log" to see what the app did.
 
 That is it. The app creates a separate decrypted copy, so you can keep the

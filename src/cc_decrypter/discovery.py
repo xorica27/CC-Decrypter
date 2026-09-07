@@ -14,6 +14,12 @@ VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v"}
 PROBE_TAIL_BYTES = 1024 * 1024
 MIN_BDVE_FILE_SIZE = 68
 UNSAFE_NAME_CHARS = re.compile(r'[\\/:*?"<>|]')
+DRAFT_SUBPATH = Path("User Data") / "Projects" / "com.lveditor.draft"
+# CapCut international first, then the Chinese JianyingPro build
+EDITOR_FOLDERS = ("CapCut", "JianyingPro")
+# the Mac App Store build is sandboxed, so its drafts live under its container
+MACOS_SANDBOX_CONTAINERS = ("com.lemon.lvoverseas",)
+OUTPUT_FOLDER_NAME = "CC Decrypter Exports"
 
 
 @dataclass(frozen=True)
@@ -41,13 +47,63 @@ class DraftVideo:
         return f"{moment.strftime('%b')} {moment.day}, {moment.year}"
 
 
-def default_drafts_root() -> Path | None:
+def candidate_drafts_roots() -> list[Path]:
+    """Every place this platform is known to keep CapCut drafts, best first."""
+    home = Path.home()
+    roots = []
     if sys.platform == "win32":
-        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        root = Path(local) / "CapCut" / "User Data" / "Projects" / "com.lveditor.draft"
+        local = Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local")
+        for editor in EDITOR_FOLDERS:
+            roots.append(local / editor / DRAFT_SUBPATH)
     else:
-        root = Path.home() / "Movies" / "CapCut" / "User Data" / "Projects" / "com.lveditor.draft"
-    return root if root.is_dir() else None
+        for editor in EDITOR_FOLDERS:
+            roots.append(home / "Movies" / editor / DRAFT_SUBPATH)
+        for container in MACOS_SANDBOX_CONTAINERS:
+            for editor in EDITOR_FOLDERS:
+                roots.append(
+                    home / "Library" / "Containers" / container / "Data" / "Movies"
+                    / editor / DRAFT_SUBPATH
+                )
+    return roots
+
+
+def default_drafts_path() -> Path:
+    """Where drafts normally live on this platform, whether or not it exists."""
+    return candidate_drafts_roots()[0]
+
+
+def default_drafts_root() -> Path | None:
+    """The first candidate that is actually there, or None."""
+    for root in candidate_drafts_roots():
+        if root.is_dir():
+            return root
+    return None
+
+
+def resolve_drafts_folder(saved: Path | None) -> tuple[Path, Path | None]:
+    """Pick the folder to open with.
+
+    Returns the folder to use plus the saved folder when it has gone missing,
+    so the caller can say so instead of quietly scanning somewhere else.
+    """
+    if saved is not None and saved.is_dir():
+        return saved, None
+    return default_drafts_root() or default_drafts_path(), saved
+
+
+def default_output_dir() -> Path:
+    return Path.home() / OUTPUT_FOLDER_NAME
+
+
+def resolve_output_folder(saved: Path | None) -> Path:
+    """Use the saved output folder while it is still somewhere we could write.
+
+    The folder itself is only created at decrypt time, so a saved path that
+    does not exist yet is fine as long as its parent is there.
+    """
+    if saved is not None and (saved.is_dir() or saved.parent.is_dir()):
+        return saved
+    return default_output_dir()
 
 
 def probe_cryptor_type(path: Path) -> int | None:

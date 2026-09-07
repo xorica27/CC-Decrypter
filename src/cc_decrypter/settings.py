@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 THEMES = ("light", "dark")
+SORT_KEYS = ("date", "name", "size")
 
 
 def settings_path() -> Path:
@@ -49,6 +50,32 @@ def load_drafts_folder() -> Path | None:
 
 def save_drafts_folder(folder: Path | str) -> None:
     _update_settings({"drafts_folder": str(folder)})
+
+
+def load_sort() -> tuple[str, bool] | None:
+    """Return the saved (sort key, descending) pair, or None when unset."""
+    data = load_settings()
+    key = data.get("sort_key")
+    if key not in SORT_KEYS:
+        return None
+    return key, bool(data.get("sort_descending", True))
+
+
+def save_sort(key: str, descending: bool) -> None:
+    if key not in SORT_KEYS:
+        raise ValueError(f"unknown sort key: {key}")
+    _update_settings({"sort_key": key, "sort_descending": bool(descending)})
+
+
+def load_output_folder() -> Path | None:
+    value = load_settings().get("output_folder")
+    if isinstance(value, str) and value:
+        return Path(value)
+    return None
+
+
+def save_output_folder(folder: Path | str) -> None:
+    _update_settings({"output_folder": str(folder)})
 
 
 def detect_system_theme() -> str:

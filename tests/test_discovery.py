@@ -1,13 +1,20 @@
+import os
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
+from cc_decrypter import discovery
 from cc_decrypter.discovery import (
     DraftVideo,
+    candidate_drafts_roots,
+    default_drafts_path,
     find_protected_videos,
     output_path_for,
     probe_cryptor_type,
+    resolve_drafts_folder,
+    resolve_output_folder,
 )
 
 
@@ -147,3 +154,92 @@ class DiscoveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DraftsFolderLocationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+
+    def _candidates(self, platform: str, home: Path) -> list[str]:
+        with patch.object(discovery.sys, "platform", platform), \
+                patch.object(discovery.Path, "home", classmethod(lambda cls: home)):
+            return [str(path) for path in candidate_drafts_roots()]
+
+    def test_windows_looks_under_local_appdata(self) -> None:
+        with patch.dict(os.environ, {"LOCALAPPDATA": str(self.tmp / "AppData" / "Local")}):
+            candidates = self._candidates("win32", self.tmp)
+
+        self.assertTrue(candidates[0].endswith(
+            str(Path("AppData") / "Local" / "CapCut" / discovery.DRAFT_SUBPATH)
+        ))
+        self.assertTrue(any("JianyingPro" in candidate for candidate in candidates))
+        self.assertFalse(any("Movies" in candidate for candidate in candidates))
+
+    def test_macos_looks_under_movies_and_the_sandbox_container(self) -> None:
+        candidates = self._candidates("darwin", self.tmp)
+
+        self.assertTrue(candidates[0].endswith(
+            str(Path("Movies") / "CapCut" / discovery.DRAFT_SUBPATH)
+        ))
+        self.assertTrue(any("JianyingPro" in candidate for candidate in candidates))
+        self.assertTrue(any("Containers" in candidate for candidate in candidates))
+
+    def test_default_path_is_the_first_candidate_even_when_absent(self) -> None:
+        with patch.object(discovery, "candidate_drafts_roots", lambda: [self.tmp / "nope"]):
+            self.assertEqual(default_drafts_path(), self.tmp / "nope")
+
+    def test_saved_folder_is_used_while_it_exists(self) -> None:
+        saved = self.tmp / "drafts"
+        saved.mkdir()
+
+        self.assertEqual(resolve_drafts_folder(saved), (saved, None))
+
+    def test_missing_saved_folder_is_reported_and_replaced(self) -> None:
+        saved = self.tmp / "gone"
+        found = self.tmp / "found"
+        found.mkdir()
+
+        with patch.object(discovery, "default_drafts_root", lambda: found):
+            folder, missing = resolve_drafts_folder(saved)
+
+        self.assertEqual(folder, found)
+        self.assertEqual(missing, saved)
+
+    def test_nothing_saved_and_nothing_installed_falls_back_to_the_default_path(self) -> None:
+        placeholder = self.tmp / "placeholder"
+
+        with patch.object(discovery, "default_drafts_root", lambda: None), \
+                patch.object(discovery, "default_drafts_path", lambda: placeholder):
+            self.assertEqual(resolve_drafts_folder(None), (placeholder, None))
+
+
+class OutputFolderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.default = self.tmp / "default exports"
+        patcher = patch.object(discovery, "default_output_dir", lambda: self.default)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_saved_folder_is_kept(self) -> None:
+        saved = self.tmp / "exports"
+        saved.mkdir()
+
+        self.assertEqual(resolve_output_folder(saved), saved)
+
+    def test_saved_folder_is_kept_before_it_has_been_created(self) -> None:
+        saved = self.tmp / "not made yet"
+
+        self.assertEqual(resolve_output_folder(saved), saved)
+
+    def test_saved_folder_on_a_vanished_drive_falls_back(self) -> None:
+        saved = self.tmp / "unmounted" / "exports"
+
+        self.assertEqual(resolve_output_folder(saved), self.default)
+
+    def test_nothing_saved_falls_back(self) -> None:
+        self.assertEqual(resolve_output_folder(None), self.default)

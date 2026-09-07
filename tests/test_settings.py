@@ -40,6 +40,55 @@ class SettingsTests(unittest.TestCase):
 
         self.assertIsNone(settings.load_theme())
 
+    def test_sort_roundtrip(self) -> None:
+        settings.save_sort("size", False)
+
+        self.assertEqual(settings.load_sort(), ("size", False))
+
+        settings.save_sort("date", True)
+
+        self.assertEqual(settings.load_sort(), ("date", True))
+
+    def test_load_sort_returns_none_when_unset_or_unknown(self) -> None:
+        self.assertIsNone(settings.load_sort())
+
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text('{"sort_key": "colour"}', encoding="utf-8")
+
+        self.assertIsNone(settings.load_sort())
+
+    def test_save_sort_rejects_unknown_key(self) -> None:
+        with self.assertRaises(ValueError):
+            settings.save_sort("colour", True)
+
+    def test_sort_defaults_to_descending_when_direction_is_missing(self) -> None:
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text('{"sort_key": "name"}', encoding="utf-8")
+
+        self.assertEqual(settings.load_sort(), ("name", True))
+
+    def test_sort_theme_and_folder_settings_merge(self) -> None:
+        settings.save_theme("dark")
+        settings.save_sort("name", False)
+        settings.save_drafts_folder("/tmp/drafts")
+
+        self.assertEqual(settings.load_theme(), "dark")
+        self.assertEqual(settings.load_sort(), ("name", False))
+        self.assertEqual(settings.load_drafts_folder(), Path("/tmp/drafts"))
+
+    def test_output_folder_roundtrip(self) -> None:
+        self.assertIsNone(settings.load_output_folder())
+
+        settings.save_output_folder("/tmp/exports")
+
+        self.assertEqual(settings.load_output_folder(), Path("/tmp/exports"))
+
+    def test_load_output_folder_ignores_non_string_value(self) -> None:
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text('{"output_folder": 12}', encoding="utf-8")
+
+        self.assertIsNone(settings.load_output_folder())
+
     def test_load_corrupt_file_returns_none(self) -> None:
         self.path.parent.mkdir(parents=True)
         self.path.write_text("not json at all", encoding="utf-8")

@@ -1,8 +1,9 @@
 [project]
 name = "cc-decrypter"
-version = "0.2.1"
+version = "0.3.0"
 description = "Local utility for decrypting authorized CC video files."
 requires-python = ">=3.10"
+dependencies = ["PySide6-Essentials>=6.8"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

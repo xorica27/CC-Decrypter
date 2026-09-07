@@ -88,7 +88,7 @@ jobs:
 
       - name: Build app
         env:
-          MACOSX_DEPLOYMENT_TARGET: "10.13"
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: |
           ${{ matrix.python_bin }} -m PyInstaller ${{ matrix.pyinstaller_args }} --name "${{ matrix.pyinstaller_name }}" --paths src src/cc_decrypter/app.py
 
@@ -109,8 +109,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${GITHUB_REF_NAME#v}" "$info_plist"
           /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${GITHUB_REF_NAME#v}" "$info_plist" || \
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_REF_NAME#v}" "$info_plist"
-          /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 10.13" "$info_plist" || \
-            /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 10.13" "$info_plist"
+          /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 12.0" "$info_plist" || \
+            /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 12.0" "$info_plist"
 
           bundle_executable_name="$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$info_plist")"
           bundle_executable="${app_bundle}/Contents/MacOS/${bundle_executable_name}"
