@@ -78,6 +78,23 @@ def save_output_folder(folder: Path | str) -> None:
     _update_settings({"output_folder": str(folder)})
 
 
+def load_window_geometry() -> tuple[int, int, int, int] | None:
+    """Return the saved (x, y, width, height), or None when unusable."""
+    value = load_settings().get("window")
+    if not isinstance(value, list) or len(value) != 4:
+        return None
+    if not all(isinstance(number, int) for number in value):
+        return None
+    x, y, width, height = value
+    if width < 200 or height < 200:
+        return None
+    return x, y, width, height
+
+
+def save_window_geometry(x: int, y: int, width: int, height: int) -> None:
+    _update_settings({"window": [int(x), int(y), int(width), int(height)]})
+
+
 def detect_system_theme() -> str:
     if sys.platform == "darwin":
         try:

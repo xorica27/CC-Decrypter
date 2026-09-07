@@ -163,13 +163,24 @@ def find_protected_videos(root: Path) -> list[DraftVideo]:
     return found
 
 
+def export_base_name(video: DraftVideo) -> str:
+    """The name a decrypted copy gets, before any (2) suffix."""
+    project = UNSAFE_NAME_CHARS.sub("_", video.project_name)
+    stem = UNSAFE_NAME_CHARS.sub("_", video.path.stem)
+    return f"{project}_{stem}_decoded" if project else f"{stem}_decoded"
+
+
+def existing_export(video: DraftVideo, output_dir: Path) -> Path | None:
+    """The decrypted copy already sitting in the output folder, if there is one."""
+    candidate = output_dir / f"{export_base_name(video)}.mp4"
+    return candidate if candidate.exists() else None
+
+
 def output_path_for(video: DraftVideo, output_dir: Path, taken: set[str] | None = None) -> Path:
     """Pick a non-clobbering output path like <project>_<stem>_decoded.mp4."""
     taken = taken if taken is not None else set()
 
-    project = UNSAFE_NAME_CHARS.sub("_", video.project_name)
-    stem = UNSAFE_NAME_CHARS.sub("_", video.path.stem)
-    base = f"{project}_{stem}_decoded" if project else f"{stem}_decoded"
+    base = export_base_name(video)
 
     candidate = output_dir / f"{base}.mp4"
     counter = 2

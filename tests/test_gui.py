@@ -60,6 +60,9 @@ class WindowTests(unittest.TestCase):
         self.tmp = Path(tmp.name)
         self.drafts = self.tmp / "drafts"
         self.drafts.mkdir()
+        self.exports = self.tmp / "exports"
+        self.exports.mkdir()
+        self.saved_geometry: list[tuple] = []
 
         self.saved_sort: list[tuple[str, bool]] = []
         self.saved_theme: list[str] = []
@@ -76,7 +79,9 @@ class WindowTests(unittest.TestCase):
             ("save_output_folder", lambda folder: self.saved_output.append(str(folder))),
             ("save_drafts_folder", lambda folder: None),
             ("resolve_drafts_folder", lambda saved: (self.drafts, None)),
-            ("resolve_output_folder", lambda saved: self.tmp / "exports"),
+            ("resolve_output_folder", lambda saved: self.exports),
+            ("load_window_geometry", lambda: None),
+            ("save_window_geometry", lambda *a: self.saved_geometry.append(a)),
         ):
             patcher = patch.object(gui, target, replacement)
             patcher.start()
@@ -252,6 +257,180 @@ class WindowTests(unittest.TestCase):
 
         self.assertIn("first line", self.window.log_window.text.toPlainText())
         self.assertIn("second line", self.window.log_window.text.toPlainText())
+
+
+    # -------------------------------------------------------- decrypting
+
+    def test_progress_and_cancel_appear_only_while_working(self) -> None:
+        self.assertFalse(self.window.progress.isVisibleTo(self.window))
+        self.assertFalse(self.window.cancel_button.isVisibleTo(self.window))
+
+        self.window._batch_progressed(2, 5, "clip_b.mp4")
+
+        self.assertEqual(self.window.progress.value(), 2)
+        self.assertEqual(self.window.progress.maximum(), 5)
+        self.assertIn("3 of 5", self.window.status.text())
+        self.assertIn("clip_b.mp4", self.window.status.text())
+
+    def test_cancelling_asks_the_worker_to_stop(self) -> None:
+        self.window._request_cancel()
+
+        self.assertTrue(self.window.cancel_requested.is_set())
+        self.assertFalse(self.window.cancel_button.isEnabled())
+        self.assertIn("Finishing the current video", self.window.status.text())
+
+    def test_a_cancelled_run_reports_what_it_managed(self) -> None:
+        self.window._batch_finished(2, 0, 5, True)
+
+        self.assertIn("Stopped: 2 of 5", self.window.status.text())
+        self.assertFalse(self.window.progress.isVisibleTo(self.window))
+
+    def test_the_worker_stops_when_cancelled(self) -> None:
+        self.window.cancel_requested.set()
+        finished: list[tuple] = []
+        self.window.batch_done.connect(lambda *args: finished.append(args))
+
+        self.window._batch_worker(make_videos(), self.exports)
+        self.app.processEvents()
+
+        self.assertEqual(finished, [(0, 0, 3, True)])
+
+    # ---------------------------------------------------- already exported
+
+    def test_videos_already_in_the_output_folder_are_marked(self) -> None:
+        from cc_decrypter.discovery import export_base_name
+
+        (self.exports / f"{export_base_name(self.window.videos[0])}.mp4").write_bytes(b"x")
+        self.window._populate()
+
+        marks = [
+            bool(self.window.list.item(row).data(self.gui.EXPORTED_ROLE))
+            for row in range(self.window.list.count())
+        ]
+        self.assertEqual(marks.count(True), 1)
+
+    def test_picking_an_exported_video_offers_to_skip_it(self) -> None:
+        from cc_decrypter.discovery import export_base_name
+
+        for video in self.window.videos:
+            (self.exports / f"{export_base_name(video)}.mp4").write_bytes(b"x")
+        self.window._populate()
+        self.window.list.selectAll()
+        started: list = []
+        self.window._batch_worker = lambda *args: started.append(args)
+
+        with patch.object(
+            self.gui.QMessageBox, "question",
+            lambda *a, **k: self.gui.QMessageBox.StandardButton.Yes,
+        ):
+            self.window.start_batch()
+
+        self.assertEqual(started, [])
+        self.assertIn("already exported", self.window.status.text())
+
+    # --------------------------------------------------------- reveal
+
+    def test_the_output_path_opens_the_folder(self) -> None:
+        opened: list = []
+
+        with patch.object(self.gui, "reveal", opened.append):
+            self.window._reveal_output()
+
+        self.assertEqual(opened, [self.exports])
+
+    def test_revealing_a_folder_that_does_not_exist_yet_explains_itself(self) -> None:
+        self.window.output_dir = self.tmp / "not yet"
+        opened: list = []
+
+        with patch.object(self.gui, "reveal", opened.append):
+            self.window._reveal_output()
+
+        self.assertEqual(opened, [])
+        self.assertIn("appears when the first video", self.window.status.text())
+
+    # -------------------------------------------------------- menus etc.
+
+    def test_the_menu_offers_the_actions_with_shortcuts(self) -> None:
+        actions = self.window.actions_by_name
+
+        for name in ("Rescan", "Decrypt Selected", "Select All", "View Log",
+                     "About CC Decrypter", "Open Output Folder"):
+            self.assertIn(name, actions)
+        self.assertEqual(actions["Rescan"].shortcut().toString(), "Ctrl+R")
+        self.assertEqual(actions["View Log"].shortcut().toString(), "Ctrl+L")
+
+    def test_the_window_size_is_saved_on_close(self) -> None:
+        self.window.resize(820, 700)
+        self.window.close()
+
+        self.assertEqual(len(self.saved_geometry), 1)
+        _, _, width, height = self.saved_geometry[0]
+        self.assertEqual((width, height), (820, 700))
+
+    def test_a_saved_size_is_restored(self) -> None:
+        with patch.object(self.gui, "load_window_geometry", lambda: (0, 0, 760, 640)), \
+                patch.object(self.gui.DecrypterWindow, "start_scan", lambda self: None):
+            window = self.gui.DecrypterWindow()
+        self.addCleanup(window.deleteLater)
+
+        self.assertEqual((window.width(), window.height()), (760, 640))
+
+    # ------------------------------------------------------- update check
+
+    def test_version_comparison(self) -> None:
+        self.assertGreater(self.gui.version_tuple("v0.3.1"), self.gui.version_tuple("0.3.0"))
+        self.assertGreater(self.gui.version_tuple("0.10.0"), self.gui.version_tuple("0.9.9"))
+        self.assertEqual(self.gui.version_tuple("0.3.0"), self.gui.version_tuple("v0.3.0"))
+
+    def test_the_update_check_reports_each_outcome(self) -> None:
+        import cc_decrypter
+
+        self.window.show_about()
+        about = self.window.about_dialog
+
+        about._show_update("99.0.0", "")
+        self.assertIn("99.0.0 is available", about.update_status.text())
+
+        about._show_update(cc_decrypter.__version__, "")
+        self.assertIn("up to date", about.update_status.text())
+
+        about._show_update("", "no network")
+        self.assertIn("no network", about.update_status.text())
+
+    # ------------------------------------------------------------ about
+
+    def test_about_reports_the_running_version(self) -> None:
+        import cc_decrypter
+
+        self.window.show_about()
+
+        details = self.window.about_dialog.details.toPlainText()
+        self.assertIn(cc_decrypter.__version__, details)
+        self.assertIn("Qt ", details)
+        self.assertIn("Settings:", details)
+
+    def test_about_opens_once_and_is_reachable_from_the_footer(self) -> None:
+        self.window.show_about()
+        first = self.window.about_dialog
+
+        self.window.show_about()
+
+        self.assertIs(self.window.about_dialog, first)
+        self.assertTrue(
+            any(
+                button.text().startswith("About")
+                for button in self.window.findChildren(self.gui.QToolButton)
+            )
+        )
+
+    def test_the_version_is_logged_for_bug_reports(self) -> None:
+        import cc_decrypter
+
+        self.app.processEvents()
+
+        self.assertTrue(
+            any(cc_decrypter.__version__ in line for line in self.window.log_lines)
+        )
 
 
 if __name__ == "__main__":

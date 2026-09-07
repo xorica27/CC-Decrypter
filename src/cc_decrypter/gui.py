@@ -6,12 +6,23 @@ Qt here. This module only says what a row looks like and what a click means.
 
 from __future__ import annotations
 
+import sys
 import threading
 from collections import deque
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPalette, QPen
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import (
+    QAction,
+    QDesktopServices,
+    QKeySequence,
+    QColor,
+    QFont,
+    QGuiApplication,
+    QPainter,
+    QPalette,
+    QPen,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -22,7 +33,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenuBar,
     QMessageBox,
+    QProgressBar,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
@@ -33,9 +46,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from cc_decrypter import __version__
 from cc_decrypter.decoder import DecodeError, decode_file
 from cc_decrypter.discovery import (
     DraftVideo,
+    existing_export,
     find_protected_videos,
     output_path_for,
     resolve_drafts_folder,
@@ -46,11 +61,16 @@ from cc_decrypter.settings import (
     load_output_folder,
     load_sort,
     load_theme,
+    load_window_geometry,
     save_drafts_folder,
     save_output_folder,
     save_sort,
     save_theme,
+    save_window_geometry,
 )
+
+RELEASES_URL = "https://github.com/xorica27/CC-Decrypter/releases"
+LATEST_RELEASE_API = "https://api.github.com/repos/xorica27/CC-Decrypter/releases/latest"
 
 ACCENT = "#2f6bff"
 GREEN = "#34c759"
@@ -83,6 +103,7 @@ DARK_TOKENS = {
     "text": "#e8eaee",
 }
 
+EXPORTED_ROLE = Qt.ItemDataRole.UserRole + 1
 ROW_HEIGHT = 60
 CONTENT_WIDTH = 660
 # label, sort key, and whether that column starts on its largest/newest value
@@ -263,6 +284,8 @@ class VideoRow(QStyledItemDelegate):
         size_font.setPointSizeF(option.font.pointSizeF() - 1)
         painter.setFont(size_font)
         size_text = human_size(video.size)
+        if index.data(EXPORTED_ROLE):
+            size_text = f"exported · {size_text}"
         size_width = painter.fontMetrics().horizontalAdvance(size_text) + 12
         painter.setPen(muted)
         painter.drawText(
@@ -312,8 +335,168 @@ class VideoRow(QStyledItemDelegate):
         painter.restore()
 
 
+def version_tuple(version: str) -> tuple[int, ...]:
+    """0.3.1 -> (0, 3, 1); anything unparsable sorts lowest."""
+    numbers = []
+    for part in version.strip().lstrip("vV").split("."):
+        digits = "".join(ch for ch in part if ch.isdigit())
+        if not digits:
+            break
+        numbers.append(int(digits))
+    return tuple(numbers)
+
+
+def latest_release() -> str:
+    """Ask GitHub for the newest published version. Network call; raises on failure."""
+    import json
+    import urllib.request
+
+    request = urllib.request.Request(
+        LATEST_RELEASE_API,
+        headers={"Accept": "application/vnd.github+json", "User-Agent": f"CC-Decrypter/{__version__}"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        payload = json.load(response)
+    tag = payload.get("tag_name") or ""
+    return str(tag).lstrip("vV")
+
+
+def reveal(path: Path) -> None:
+    """Show a folder in Finder or Explorer."""
+    QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+
 def _created_label(video: DraftVideo) -> str:
     return f"Created {video.created_label}" if video.created_label else ""
+
+
+def support_details() -> str:
+    """The facts worth pasting into a bug report."""
+    import platform
+    import sys
+
+    from PySide6 import __version__ as pyside_version
+    from PySide6.QtCore import qVersion
+
+    from cc_decrypter.app import LOG_PATH
+    from cc_decrypter.settings import settings_path
+
+    if sys.platform == "darwin":
+        os_name = f"macOS {platform.mac_ver()[0]}"
+    elif sys.platform == "win32":
+        os_name = f"Windows {platform.release()}"
+    else:
+        os_name = platform.platform()
+
+    return "\n".join(
+        [
+            f"CC Decrypter {__version__}",
+            f"{os_name} ({platform.machine()})",
+            f"Qt {qVersion()} · PySide6 {pyside_version} · Python {sys.version.split()[0]}",
+            f"Settings: {settings_path()}",
+            f"Startup log: {LOG_PATH}",
+        ]
+    )
+
+
+class AboutDialog(QDialog):
+    update_checked = Signal(str, str)
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.update_checked.connect(self._show_update)
+        self.setWindowTitle("About CC Decrypter")
+        self.setMinimumWidth(470)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 20, 24, 18)
+        layout.setSpacing(8)
+
+        name = QLabel("CC Decrypter")
+        name_font = name.font()
+        name_font.setPointSize(name_font.pointSize() + 6)
+        name_font.setBold(True)
+        name.setFont(name_font)
+        layout.addWidget(name)
+
+        version = QLabel(f"Version {__version__}")
+        version.setObjectName("subtitle")
+        layout.addWidget(version)
+
+        summary = QLabel(
+            "Turns supported CC video files from your CapCut drafts folder into "
+            "normal MP4 files. Your original files are never changed."
+        )
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        link = QLabel(f'<a href="{RELEASES_URL}">Releases and updates</a>')
+        link.setOpenExternalLinks(True)
+        layout.addWidget(link)
+
+        self.update_status = QLabel()
+        self.update_status.setObjectName("subtitle")
+        self.update_status.setWordWrap(True)
+        layout.addWidget(self.update_status)
+
+        layout.addSpacing(6)
+        self.details = QPlainTextEdit(support_details())
+        self.details.setReadOnly(True)
+        self.details.setFont(QFont("Menlo", 10))
+        self.details.setFixedHeight(124)
+        self.details.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        layout.addWidget(self.details)
+
+        note = QLabel(
+            "Only use CC Decrypter on files you own or have permission to decrypt."
+        )
+        note.setObjectName("subtitle")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        layout.addSpacing(4)
+        buttons = QHBoxLayout()
+        copy = QPushButton("Copy details")
+        copy.clicked.connect(self._copy)
+        buttons.addWidget(copy)
+        self.check_button = QPushButton("Check for updates")
+        self.check_button.setToolTip("Asks github.com which version is newest")
+        self.check_button.clicked.connect(self._check_for_updates)
+        buttons.addWidget(self.check_button)
+        buttons.addStretch(1)
+        close = QPushButton("Close")
+        close.setDefault(True)
+        close.clicked.connect(self.accept)
+        buttons.addWidget(close)
+        layout.addLayout(buttons)
+
+    def _copy(self) -> None:
+        QApplication.clipboard().setText(self.details.toPlainText())
+
+    def _check_for_updates(self) -> None:
+        self.check_button.setEnabled(False)
+        self.update_status.setText("Asking github.com…")
+        threading.Thread(target=self._update_worker, daemon=True).start()
+
+    def _update_worker(self) -> None:
+        try:
+            self.update_checked.emit(latest_release(), "")
+        except Exception as exc:  # any network or parsing trouble
+            self.update_checked.emit("", str(exc))
+
+    def _show_update(self, latest: str, error: str) -> None:
+        self.check_button.setEnabled(True)
+        if error:
+            self.update_status.setText(f"Could not check right now: {error}")
+        elif not latest:
+            self.update_status.setText("No published release was found.")
+        elif version_tuple(latest) > version_tuple(__version__):
+            self.update_status.setText(
+                f'Version {latest} is available — <a href="{RELEASES_URL}">open the '
+                "releases page</a>."
+            )
+            self.update_status.setOpenExternalLinks(True)
+        else:
+            self.update_status.setText(f"You are up to date ({__version__}).")
 
 
 class LogWindow(QDialog):
@@ -340,7 +523,8 @@ class LogWindow(QDialog):
 
 class DecrypterWindow(QWidget):
     scan_done = Signal(object, object)
-    batch_done = Signal(int, int, int)
+    batch_progress = Signal(int, int, str)
+    batch_done = Signal(int, int, int, bool)
     logged = Signal(str)
 
     def __init__(self) -> None:
@@ -348,11 +532,14 @@ class DecrypterWindow(QWidget):
         self.setWindowTitle("CC Decrypter")
         self.resize(900, 780)
         self.setMinimumSize(640, 560)
+        self._restore_geometry()
 
         self.videos: list[DraftVideo] = []
         self.busy = False
         self.log_lines: deque[str] = deque(maxlen=1000)
         self.log_window: LogWindow | None = None
+        self.about_dialog: AboutDialog | None = None
+        self.cancel_requested = threading.Event()
 
         self.sort_key, self.sort_descending = load_sort() or ("date", True)
         self.theme = load_theme()
@@ -362,8 +549,11 @@ class DecrypterWindow(QWidget):
 
         self._build()
         self.scan_done.connect(self._scan_finished)
+        self.batch_progress.connect(self._batch_progressed)
         self.batch_done.connect(self._batch_finished)
         self.logged.connect(self._append_log)
+        # only now will anything written actually reach the log
+        self.write_log(support_details().replace("\n", " · "))
 
         if missing is not None:
             self.write_log(f"Saved drafts folder is gone: {missing}")
@@ -378,6 +568,7 @@ class DecrypterWindow(QWidget):
     def _build(self) -> None:
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        self._outer_layout = outer
         centre = QHBoxLayout()
         centre.addStretch(1)
         column = QVBoxLayout()
@@ -442,6 +633,21 @@ class DecrypterWindow(QWidget):
         column.addWidget(self.list, 1)
 
         column.addSpacing(6)
+        progress_row = QHBoxLayout()
+        self.progress = QProgressBar()
+        self.progress.setTextVisible(True)
+        self.progress.setFormat("%v of %m")
+        self.progress.setFixedHeight(18)
+        self.progress.hide()
+        progress_row.addWidget(self.progress, 1)
+        self.cancel_button = QToolButton()
+        self.cancel_button.setObjectName("link")
+        self.cancel_button.setText("Cancel")
+        self.cancel_button.clicked.connect(self._request_cancel)
+        self.cancel_button.hide()
+        progress_row.addWidget(self.cancel_button)
+        column.addLayout(progress_row)
+
         self.counts = QLabel()
         self.counts.setObjectName("counts")
         self.counts.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -460,8 +666,13 @@ class DecrypterWindow(QWidget):
         saved_to = QLabel("Saved to")
         saved_to.setObjectName("subtitle")
         saved_row.addWidget(saved_to)
-        self.output_label = QLabel()
+        self.output_label = ElidingPathLabel()
         self.output_label.setFont(QFont("Menlo", 11))
+        # unlike the folder pill this one sits in a centred row, so it has to ask
+        # for its width instead of taking whatever is left
+        self.output_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.output_label.setMaximumWidth(340)
+        self.output_label.clicked.connect(self._reveal_output)
         saved_row.addWidget(self.output_label)
         change = QToolButton()
         change.setObjectName("link")
@@ -476,6 +687,11 @@ class DecrypterWindow(QWidget):
         self.status = QLabel()
         footer.addWidget(self.status)
         footer.addStretch(1)
+        about_button = QToolButton()
+        about_button.setObjectName("link")
+        about_button.setText(f"About · {__version__}")
+        about_button.clicked.connect(self.show_about)
+        footer.addWidget(about_button)
         log_button = QToolButton()
         log_button.setObjectName("link")
         log_button.setText("View log")
@@ -483,12 +699,61 @@ class DecrypterWindow(QWidget):
         footer.addWidget(log_button)
         column.addLayout(footer)
 
+        self._build_menu(outer)
         self.setStyleSheet(stylesheet(self.theme))
         QGuiApplication.styleHints().colorSchemeChanged.connect(self._restyle)
         self._update_output_label()
         self._update_sort_buttons()
         self._selection_changed()
         self._set_status("neutral", "Starting…")
+
+    def _build_menu(self, layout: QVBoxLayout) -> None:
+        """macOS takes a parentless menu bar as the global one; elsewhere it has
+        to sit in the window."""
+        self.menu_bar = QMenuBar()
+        self.actions_by_name = {}
+
+        def action(menu, text, slot, shortcut=None, role=None):
+            item = QAction(text, self)
+            item.triggered.connect(slot)
+            if shortcut is not None:
+                item.setShortcut(QKeySequence(shortcut))
+            if role is not None:
+                item.setMenuRole(role)
+            menu.addAction(item)
+            self.actions_by_name[text] = item
+            return item
+
+        file_menu = self.menu_bar.addMenu("File")
+        action(file_menu, "Rescan", self.start_scan, "Ctrl+R")
+        action(file_menu, "Choose Drafts Folder…", self._on_choose_folder)
+        action(file_menu, "Change Output Folder…", self._on_change_output)
+        file_menu.addSeparator()
+        action(file_menu, "Open Output Folder", self._reveal_output, "Ctrl+Shift+O")
+        file_menu.addSeparator()
+        action(file_menu, "Decrypt Selected", self.start_batch, "Ctrl+Return")
+
+        edit_menu = self.menu_bar.addMenu("Edit")
+        action(edit_menu, "Select All", self.list.selectAll, QKeySequence.StandardKey.SelectAll)
+        action(edit_menu, "Clear Selection", self.list.clearSelection, "Ctrl+Shift+A")
+
+        help_menu = self.menu_bar.addMenu("Help")
+        action(help_menu, "View Log", self.show_log, "Ctrl+L")
+        action(help_menu, "Check for Updates…", self.show_about)
+        action(
+            help_menu, "About CC Decrypter", self.show_about,
+            role=QAction.MenuRole.AboutRole,
+        )
+
+        if sys.platform != "darwin":
+            layout.setMenuBar(self.menu_bar)
+
+    def show_about(self) -> None:
+        if self.about_dialog is None:
+            self.about_dialog = AboutDialog(self)
+        self.about_dialog.show()
+        self.about_dialog.raise_()
+        self.about_dialog.activateWindow()
 
     def _step_label(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -546,8 +811,14 @@ class DecrypterWindow(QWidget):
             shown = str(Path("~") / self.output_dir.relative_to(Path.home()))
         except ValueError:
             shown = str(self.output_dir)
-        self.output_label.setText(shown)
-        self.output_label.setToolTip(str(self.output_dir))
+        self.output_label.setFullText(shown)
+        self.output_label.setToolTip(f"{self.output_dir}\nClick to open this folder")
+
+    def _reveal_output(self) -> None:
+        if not self.output_dir.is_dir():
+            self._set_status("neutral", "That folder appears when the first video is decrypted.")
+            return
+        reveal(self.output_dir)
 
     # --------------------------------------------------------------- list
 
@@ -560,6 +831,7 @@ class DecrypterWindow(QWidget):
         ):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, video)
+            item.setData(EXPORTED_ROLE, existing_export(video, self.output_dir) is not None)
             item.setText(video.path.name)  # gives keyboard type-ahead for free
             self.list.addItem(item)
             if video.path in chosen:
@@ -639,6 +911,24 @@ class DecrypterWindow(QWidget):
 
     # ------------------------------------------------------------ actions
 
+    def _restore_geometry(self) -> None:
+        saved = load_window_geometry()
+        if saved is None:
+            return
+        x, y, width, height = saved
+        self.resize(width, height)
+        # only take the position back if it still lands on a screen
+        for screen in QGuiApplication.screens():
+            available = screen.availableGeometry()
+            if available.contains(x + 40, y + 40):
+                self.move(x, y)
+                return
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        geometry = self.geometry()
+        save_window_geometry(geometry.x(), geometry.y(), geometry.width(), geometry.height())
+        super().closeEvent(event)
+
     def _report_missing_folder(self, missing: Path) -> None:
         if self.drafts_path.is_dir():
             detail = f"CC Decrypter is using this folder instead:\n{self.drafts_path}"
@@ -670,6 +960,7 @@ class DecrypterWindow(QWidget):
         self.output_dir = Path(path)
         save_output_folder(self.output_dir)
         self._update_output_label()
+        self._populate()  # the "exported" marks belong to this folder
 
     def _set_busy(self, busy: bool) -> None:
         self.busy = busy
@@ -731,23 +1022,68 @@ class DecrypterWindow(QWidget):
         videos = self.selected_videos()
         if self.busy or not videos:
             return
+
+        done_already = [
+            video for video in videos if existing_export(video, self.output_dir) is not None
+        ]
+        if done_already:
+            choice = QMessageBox.question(
+                self,
+                "Already exported",
+                f"{len(done_already)} of the {len(videos)} videos you picked are already in "
+                "the output folder.\n\nSkip those, or decrypt them again as extra copies?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if choice == QMessageBox.StandardButton.Cancel:
+                return
+            if choice == QMessageBox.StandardButton.Yes:
+                videos = [video for video in videos if video not in done_already]
+                if not videos:
+                    self._set_status("ok", "Everything you picked was already exported.")
+                    return
+
         try:
             self.output_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             QMessageBox.critical(self, "Could not create output folder", str(exc))
             return
 
+        self.cancel_requested.clear()
         self._set_busy(True)
+        self.progress.setRange(0, len(videos))
+        self.progress.setValue(0)
+        self.progress.show()
+        self.cancel_button.setText("Cancel")
+        self.cancel_button.setEnabled(True)
+        self.cancel_button.show()
         self._set_status("working", f"Decrypting {len(videos)} video(s)…")
         self.write_log(f"Decrypting {len(videos)} video(s) to {self.output_dir} …")
         threading.Thread(
             target=self._batch_worker, args=(videos, self.output_dir), daemon=True
         ).start()
 
+    def _request_cancel(self) -> None:
+        self.cancel_requested.set()
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setText("Stopping…")
+        self._set_status("working", "Finishing the current video, then stopping…")
+        self.write_log("Cancel requested — stopping after the current video.")
+
+    def _batch_progressed(self, index: int, total: int, name: str) -> None:
+        self.progress.setRange(0, total)
+        self.progress.setValue(index)
+        self._set_status("working", f"Decrypting {index + 1} of {total} · {name}")
+
     def _batch_worker(self, videos: list[DraftVideo], output_dir: Path) -> None:
         taken: set[str] = set()
         done = failed = 0
-        for video in videos:
+        cancelled = False
+        for index, video in enumerate(videos):
+            if self.cancel_requested.is_set():
+                cancelled = True
+                break
+            self.batch_progress.emit(index, len(videos), video.path.name)
             self.write_log(f"Decrypting: {video.path.name}")
             try:
                 target = output_path_for(video, output_dir, taken)
@@ -757,10 +1093,17 @@ class DecrypterWindow(QWidget):
             except (DecodeError, OSError, ValueError) as exc:
                 failed += 1
                 self.write_log(f"ERROR: {video.path.name}: {exc}")
-        self.batch_done.emit(done, failed, len(videos))
+        self.batch_done.emit(done, failed, len(videos), cancelled)
 
-    def _batch_finished(self, done: int, failed: int, total: int) -> None:
+    def _batch_finished(self, done: int, failed: int, total: int, cancelled: bool = False) -> None:
         self._set_busy(False)
+        self.progress.hide()
+        self.cancel_button.hide()
+        self._populate()  # newly written files now show as exported
+        if cancelled:
+            self._set_status("neutral", f"Stopped: {done} of {total} decrypted.")
+            self.write_log(f"Stopped after {done} of {total} video(s).")
+            return
         if failed:
             self._set_status("error", f"Last run: {done} decrypted · {failed} failed.")
             QMessageBox.critical(
@@ -772,11 +1115,15 @@ class DecrypterWindow(QWidget):
         else:
             self._set_status("ok", f"Last run: {done} decrypted · 0 failed.")
             if done:
-                QMessageBox.information(
-                    self,
-                    "Done",
-                    f"Decrypted {done} video(s).\nSaved to: {self.output_label.text()}",
-                )
+                box = QMessageBox(self)
+                box.setWindowTitle("Done")
+                box.setText(f"Decrypted {done} video(s).")
+                box.setInformativeText(f"Saved to {self.output_dir}")
+                show = box.addButton("Show in Finder", QMessageBox.ButtonRole.ActionRole)
+                box.addButton(QMessageBox.StandardButton.Ok)
+                box.exec()
+                if box.clickedButton() is show:
+                    self._reveal_output()
 
     # ----------------------------------------------------------- logging
 
@@ -819,6 +1166,8 @@ def build_palette(theme: str) -> QPalette:
         (QPalette.ColorRole.ToolTipText, text),
         (QPalette.ColorRole.PlaceholderText, QColor(GREY)),
         (QPalette.ColorRole.Mid, QColor(GREY)),
+        (QPalette.ColorRole.Link, QColor(t["accent"])),
+        (QPalette.ColorRole.LinkVisited, QColor(t["accent"])),
         (QPalette.ColorRole.Highlight, QColor(t["accent"])),
         (QPalette.ColorRole.HighlightedText, QColor("white")),
     ):

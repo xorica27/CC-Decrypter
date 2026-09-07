@@ -32,7 +32,8 @@ time you open it.
    lists the videos it can decrypt.
 2. Click a video to select it. Click again to deselect. Pick as many as you
    like.
-3. Click the big "Decrypt N videos" button.
+3. Click the big "Decrypt N videos" button. A progress bar shows how far along
+   it is, and Cancel stops after the video being worked on.
 4. Decrypted copies are saved to your CC Decrypter Exports folder. Click
    Change… to pick a different folder — CC Decrypter remembers it for next
    time.
@@ -56,7 +57,13 @@ Handy extras:
 - Prefer dark? Use the sun/moon switch at the top right — click the sun for
   light, the moon for dark. CC Decrypter follows your system appearance the
   first time you open it, then remembers your choice.
-- Click "View log" to see what the app did.
+- Videos you have already decrypted into the current output folder are marked
+  "exported", so you do not make second copies by accident.
+- Click the "Saved to" path to open your exports folder.
+- Click "View log" to see what the app did, and "About" for the version number
+  and a Check for updates button.
+- Keyboard: Cmd/Ctrl+R rescans, Cmd/Ctrl+A selects everything, Cmd/Ctrl+L opens
+  the log, Cmd/Ctrl+Return starts decrypting.
 
 That is it. The app creates a separate decrypted copy, so you can keep the
 original file as a backup. Some videos take longer than others — a few can

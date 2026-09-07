@@ -3,6 +3,27 @@
 All notable changes to CC Decrypter are documented here. Download the latest
 version from the GitHub Releases page.
 
+## 0.3.1 — 2026-09-07
+
+- An About box: the version number, what the app is, a link to the releases
+  page, and a details block with your macOS/Windows version, Qt and Python
+  versions and where your settings and startup log live — with a Copy details
+  button for pasting into a bug report. Reachable from About at the bottom of
+  the window, and from the application menu on macOS.
+- The same details are written to the log at startup, so any log you send
+  already says which version produced it.
+- Decrypting now shows progress — "3 of 12" and the video being worked on — and
+  a Cancel button that stops after the video in flight.
+- Videos already sitting in your output folder are marked "exported", and if
+  you pick some of them CC Decrypter offers to skip them rather than quietly
+  making second copies.
+- Click the "Saved to" path to open that folder, and the finished dialog offers
+  Show in Finder.
+- A menu bar with keyboard shortcuts: Rescan, choosing folders, Open Output
+  Folder, Decrypt Selected, Select All and View Log.
+- Check for updates in the About box asks GitHub which version is newest. It
+  only ever happens when you click it.
+
 ## 0.3.0 — 2026-09-07
 
 The window was rebuilt on Qt.

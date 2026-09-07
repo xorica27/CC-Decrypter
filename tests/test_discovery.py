@@ -9,6 +9,8 @@ from cc_decrypter import discovery
 from cc_decrypter.discovery import (
     DraftVideo,
     candidate_drafts_roots,
+    existing_export,
+    export_base_name,
     default_drafts_path,
     find_protected_videos,
     output_path_for,
@@ -243,3 +245,31 @@ class OutputFolderTests(unittest.TestCase):
 
     def test_nothing_saved_falls_back(self) -> None:
         self.assertEqual(resolve_output_folder(None), self.default)
+
+
+class ExistingExportTests(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.out = Path(tmp.name)
+        self.video = DraftVideo(
+            path=Path("/drafts/My Project/clip.mp4"),
+            relative=Path("My Project/clip.mp4"),
+            size=10,
+            cryptor_type=1,
+        )
+
+    def test_no_export_yet(self) -> None:
+        self.assertIsNone(existing_export(self.video, self.out))
+
+    def test_finds_the_copy_that_output_path_for_would_write(self) -> None:
+        target = output_path_for(self.video, self.out)
+        target.write_bytes(b"decoded")
+
+        self.assertEqual(existing_export(self.video, self.out), target)
+
+    def test_the_base_name_matches_the_output_path(self) -> None:
+        self.assertEqual(
+            output_path_for(self.video, self.out).name,
+            f"{export_base_name(self.video)}.mp4",
+        )
